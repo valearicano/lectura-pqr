@@ -1,0 +1,6 @@
+{
+  "name": "Plataforma Inteligente de PQRS",
+  "description": "Plataforma web profesional para lectura de descripciones, análisis con IA Gemini, clasificación automática, embeddings, agrupación semántica y exportación enriquecida de PQRS.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
