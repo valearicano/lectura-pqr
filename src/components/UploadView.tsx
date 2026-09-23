@@ -162,12 +162,25 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
         processStatus.porcentaje = Math.round(10 + (i / totalBatches) * 60);
         setCurrentProgress({ ...processStatus });
 
-        const payload = batch.map(r => ({
-          numero_expediente: r.numero_expediente,
-          resumen_original: r.resumen_original,
-          descripcion_original: r.descripcion_normalizada || r.descripcion_original,
-          hash_descripcion: r.hash_descripcion
-        }));
+        const payload = batch.map(r => {
+          const submotivo = r.columnas_adicionales?.['SUBMOTIVO'] ||
+                            r.columnas_adicionales?.['submotivo'] ||
+                            r.columnas_adicionales?.['SUB_MOTIVO'] ||
+                            r.resumen_original;
+          const producto = r.columnas_adicionales?.['NOMBRE_PRODUCTO'] ||
+                           r.columnas_adicionales?.['nombre_producto'] ||
+                           r.columnas_adicionales?.['PRODUCTO'] ||
+                           r.columnas_adicionales?.['producto'];
+
+          return {
+            numero_expediente: r.numero_expediente,
+            resumen_original: r.resumen_original,
+            descripcion_original: r.descripcion_original, // Maintain original description including abbreviations/informal language
+            submotivo_original: submotivo,
+            producto_original: producto,
+            hash_descripcion: r.hash_descripcion
+          };
+        });
 
         try {
           const res = await fetch('/api/analyze-batch', {
@@ -203,7 +216,8 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
                 producto: 'NO IDENTIFICADO',
                 problema_principal: 'Falla temporal al procesar lote',
                 solicitud_cliente: 'Revisión requerida',
-                categoria: 'OTROS',
+                categoria: 'REVISIÓN HUMANA',
+                requiere_revision_humana: 'SI',
                 subcategoria: 'Revisión humana',
                 resumen_normalizado: `Expediente ${rec.numero_expediente} pendiente`,
                 justificacion: 'Error durante la llamada a IA.',

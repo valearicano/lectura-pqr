@@ -11,18 +11,53 @@ export interface PQRSRecord {
   estado_procesamiento?: 'PENDIENTE' | 'PROCESANDO' | 'COMPLETADO' | 'ERROR';
 }
 
+export const CATEGORIAS_OFICIALES_16 = [
+  'CUOTA DE MANEJO',
+  'PSE',
+  'SEGUROS',
+  'GMF / 4X1000',
+  'TRANSACCIONES',
+  'FRAUDE / TRANSACCIÓN NO RECONOCIDA',
+  'PAGOS / ABONOS',
+  'TARJETAS',
+  'CRÉDITOS / CARTERA',
+  'CUENTAS',
+  'TRANSFERENCIAS',
+  'COBROS / CARGOS',
+  'DATOS / INFORMACIÓN',
+  'SERVICIO / ATENCIÓN',
+  'OTRAS',
+  'REVISIÓN HUMANA'
+] as const;
+
+export type CategoriaPQR16 = typeof CATEGORIAS_OFICIALES_16[number];
+
+export type TipoPQR = 'PETICIÓN' | 'QUEJA' | 'RECLAMO' | 'SOLICITUD';
+
 export interface PQRSAnalysis {
   numero_expediente: string;
+  // Core user-requested fields
+  categoria: CategoriaPQR16 | string;
+  confianza: number; // 0 to 100
+  requiere_revision_humana: boolean | 'SI' | 'NO';
+  producto?: string;
+  tipo_pqr?: TipoPQR;
+  motivo?: string;
+  submotivo?: string;
+  que_solicita_exactamente?: string;
+  hechos_principales?: string;
+  sustento_clasificacion?: string;
+  motivo_de_revision?: string;
+  existe_inconsistencia?: 'SI' | 'NO';
+
+  // Classical & structured fields (compatible with all views)
   tema_principal: string;
   subtema: string;
-  producto: string;
   problema_principal: string;
   solicitud_cliente: string;
-  categoria: string;
   subcategoria: string;
   resumen_normalizado: string;
   justificacion: string;
-  confianza: number; // 0 to 100
   nivel_confianza: 'Alta' | 'Media' | 'Baja';
   requiere_revision: boolean;
   posible_inconsistencia: boolean;
@@ -91,11 +126,15 @@ export interface ColumnDetectionResult {
   expedienteCol: string;
   resumenCol: string;
   descripcionCol: string;
+  submotivoCol?: string;
+  productoCol?: string;
   todasLasColumnas: string[];
   confianzaDeteccion: {
     expediente: boolean;
     resumen: boolean;
     descripcion: boolean;
+    submotivo?: boolean;
+    producto?: boolean;
   };
 }
 

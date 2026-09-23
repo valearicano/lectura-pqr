@@ -118,56 +118,68 @@ async function startServer() {
     res.json(result);
   });
 
-  // 6. Mandatory Test Cases runner (Section 43)
+  // 6. Mandatory Test Cases runner (16 Categorías Oficiales y Regla de Prioridad)
   app.get('/api/test-cases', async (req, res) => {
     const mandatoryTestCases = [
       {
         numero_expediente: 'TEST-001',
         resumen_original: 'Abono realizado',
         descripcion_original: 'Cliente realizó pago y no se refleja.',
-        esperado: 'Aplicación de pago'
+        esperado: 'PAGOS / ABONOS'
       },
       {
         numero_expediente: 'TEST-002',
         resumen_original: 'Extracto mensual',
         descripcion_original: 'Cliente manifiesta que le cobraron intereses que considera incorrectos.',
-        esperado: 'Cobro de intereses'
+        esperado: 'COBROS / CARGOS'
       },
       {
         numero_expediente: 'TEST-003',
         resumen_original: 'Consulta general',
-        descripcion_original: 'Cliente solicita información sobre una póliza.',
-        esperado: 'Tema de seguros'
+        descripcion_original: 'Cliente solicita información sobre una póliza de seguro de vida.',
+        esperado: 'SEGUROS'
       },
       {
         numero_expediente: 'TEST-004',
         resumen_original: 'Tarjeta de crédito',
-        descripcion_original: 'Cliente reclama cobro de cuota de manejo.',
-        esperado: 'Cuotas de manejo'
+        descripcion_original: 'Cliente reclama cobro de cuota de manejo que prometieron no cobrar.',
+        esperado: 'CUOTA DE MANEJO'
       },
       {
         numero_expediente: 'TEST-005',
         resumen_original: 'Problema técnico',
-        descripcion_original: 'Cliente no puede ingresar a la aplicación.',
-        esperado: 'Error en aplicativo / problemas de acceso'
+        descripcion_original: 'Cliente no puede ingresar a la aplicación por bloqueo de usuario.',
+        esperado: 'SERVICIO / ATENCIÓN'
       },
       {
         numero_expediente: 'TEST-006',
         resumen_original: 'Movimiento bancario',
-        descripcion_original: 'Cliente no reconoce una compra.',
-        esperado: 'Fraude / suplantación / compra no reconocida'
+        descripcion_original: 'Cliente no reconoce una compra por $500.000 con su tarjeta.',
+        esperado: 'FRAUDE / TRANSACCIÓN NO RECONOCIDA'
       },
       {
         numero_expediente: 'TEST-007',
         resumen_original: 'Comunicación escrita',
-        descripcion_original: 'Cliente presenta derecho de petición.',
-        esperado: 'Derecho de petición'
+        descripcion_original: 'Cliente presenta formalmente derecho de petición solicitando copias de contratos y extractos.',
+        esperado: 'DATOS / INFORMACIÓN'
       },
       {
         numero_expediente: 'TEST-008',
         resumen_original: 'Revisión',
         descripcion_original: 'Solicito revisar mi caso.',
-        esperado: 'Información insuficiente / Requiere revisión'
+        esperado: 'REVISIÓN HUMANA'
+      },
+      {
+        numero_expediente: 'TEST-009',
+        resumen_original: 'Pago electrónico',
+        descripcion_original: 'Transacción PSE rechazada con débito en cuenta de ahorros.',
+        esperado: 'PSE'
+      },
+      {
+        numero_expediente: 'TEST-010',
+        resumen_original: 'Gravamen tributario',
+        descripcion_original: 'Solicito marcación de mi cuenta de ahorros como exenta de 4x1000 GMF.',
+        esperado: 'GMF / 4X1000'
       }
     ];
 

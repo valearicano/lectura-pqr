@@ -13,7 +13,7 @@ import {
   ChevronRight,
   Sparkles
 } from 'lucide-react';
-import { EnrichedPQRSRecord } from '../types';
+import { EnrichedPQRSRecord, CATEGORIAS_OFICIALES_16 } from '../types';
 import { exportEnrichedExcel, exportCategoriesSummaryExcel } from '../services/excelService';
 
 interface ExpedientesViewProps {
@@ -24,6 +24,7 @@ interface ExpedientesViewProps {
 
 export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpdateRecord, onNavigateToReview }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTipoPqr, setSelectedTipoPqr] = useState<string>('TODOS');
   const [selectedCategory, setSelectedCategory] = useState<string>('TODAS');
   const [selectedConfidence, setSelectedConfidence] = useState<string>('TODAS');
   const [filterInconsistency, setFilterInconsistency] = useState<string>('TODOS');
@@ -38,7 +39,7 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
   const pageSize = 15;
 
   // Extract unique filter options
-  const uniqueCategories = Array.from(new Set(records.map(r => r.analisis?.categoria || 'Sin procesar'))).sort();
+  const uniqueCategories = Array.from(new Set(records.map(r => r.analisis?.motivo || r.analisis?.categoria || 'Sin procesar'))).sort();
   const uniqueGroups = Array.from(new Set(records.map(r => r.grupo_id || 'N/A'))).sort();
 
   // Filter records
@@ -48,15 +49,21 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
       const matchExp = r.numero_expediente.toLowerCase().includes(term);
       const matchDesc = r.descripcion_original.toLowerCase().includes(term);
       const matchRes = (r.resumen_original || '').toLowerCase().includes(term);
-      const matchNorm = (r.analisis?.resumen_normalizado || '').toLowerCase().includes(term);
-      const matchProb = (r.analisis?.problema_principal || '').toLowerCase().includes(term);
+      const matchTipo = (r.analisis?.tipo_pqr || '').toLowerCase().includes(term);
+      const matchMotivo = (r.analisis?.motivo || r.analisis?.categoria || '').toLowerCase().includes(term);
+      const matchSubm = (r.analisis?.submotivo || r.analisis?.subcategoria || '').toLowerCase().includes(term);
+      const matchSol = (r.analisis?.que_solicita_exactamente || r.analisis?.solicitud_cliente || '').toLowerCase().includes(term);
       const matchProd = (r.analisis?.producto || '').toLowerCase().includes(term);
-      if (!matchExp && !matchDesc && !matchRes && !matchNorm && !matchProb && !matchProd) {
+      if (!matchExp && !matchDesc && !matchRes && !matchTipo && !matchMotivo && !matchSubm && !matchSol && !matchProd) {
         return false;
       }
     }
 
-    if (selectedCategory !== 'TODAS' && (r.analisis?.categoria || 'Sin procesar') !== selectedCategory) {
+    if (selectedTipoPqr !== 'TODOS' && (r.analisis?.tipo_pqr || '') !== selectedTipoPqr) {
+      return false;
+    }
+
+    if (selectedCategory !== 'TODAS' && (r.analisis?.categoria || r.analisis?.motivo || 'Sin procesar') !== selectedCategory) {
       return false;
     }
 
@@ -64,11 +71,11 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
       return false;
     }
 
-    if (filterInconsistency === 'SI' && !r.analisis?.posible_inconsistencia) return false;
-    if (filterInconsistency === 'NO' && r.analisis?.posible_inconsistencia) return false;
+    if (filterInconsistency === 'SI' && !(r.analisis?.existe_inconsistencia === 'SI' || r.analisis?.posible_inconsistencia)) return false;
+    if (filterInconsistency === 'NO' && (r.analisis?.existe_inconsistencia === 'SI' || r.analisis?.posible_inconsistencia)) return false;
 
-    if (filterRequiresReview === 'SI' && !r.analisis?.requiere_revision) return false;
-    if (filterRequiresReview === 'NO' && r.analisis?.requiere_revision) return false;
+    if (filterRequiresReview === 'SI' && !(r.analisis?.requiere_revision_humana === 'SI' || r.analisis?.requiere_revision)) return false;
+    if (filterRequiresReview === 'NO' && (r.analisis?.requiere_revision_humana === 'SI' || r.analisis?.requiere_revision)) return false;
 
     if (filterGroup !== 'TODOS' && r.grupo_id !== filterGroup) return false;
 
@@ -157,16 +164,31 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
         </div>
 
         {/* Dropdown Filters Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2 border-t border-slate-100 text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5 pt-2 border-t border-slate-100 text-xs">
           <div>
-            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Categoría:</label>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Tipo de PQR:</label>
+            <select
+              value={selectedTipoPqr}
+              onChange={e => { setSelectedTipoPqr(e.target.value); setCurrentPage(1); }}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-slate-700 font-medium"
+            >
+              <option value="TODOS">Todos los tipos</option>
+              <option value="PETICIÓN">PETICIÓN</option>
+              <option value="QUEJA">QUEJA</option>
+              <option value="RECLAMO">RECLAMO</option>
+              <option value="SOLICITUD">SOLICITUD</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Categoría Oficial (1 de 16):</label>
             <select
               value={selectedCategory}
               onChange={e => { setSelectedCategory(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-slate-700"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-slate-700 font-medium"
             >
-              <option value="TODAS">Todas las categorías</option>
-              {uniqueCategories.map(c => (
+              <option value="TODAS">Todas las 16 categorías</option>
+              {CATEGORIAS_OFICIALES_16.map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
@@ -200,15 +222,15 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
           </div>
 
           <div>
-            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Requiere Revisión:</label>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Revisión Humana:</label>
             <select
               value={filterRequiresReview}
               onChange={e => { setFilterRequiresReview(e.target.value); setCurrentPage(1); }}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-slate-700"
             >
               <option value="TODOS">Todos</option>
-              <option value="SI">Requiere revisión humana</option>
-              <option value="NO">Sin revisión requerida</option>
+              <option value="SI">Requiere revisión</option>
+              <option value="NO">Sin revisión</option>
             </select>
           </div>
 
@@ -240,19 +262,29 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
               <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-3.5">Expediente</th>
-                  <th className="py-3 px-3.5">Resumen Original</th>
-                  <th className="py-3 px-3.5">Descripción de Radicación</th>
-                  <th className="py-3 px-3.5">Categoría IA</th>
-                  <th className="py-3 px-3.5">Subcategoría</th>
+                  <th className="py-3 px-3.5">Categoría Oficial (16)</th>
+                  <th className="py-3 px-3.5">Tipo PQR</th>
+                  <th className="py-3 px-3.5">Producto</th>
+                  <th className="py-3 px-3.5">Descripción Detallada (Fuente Principal)</th>
                   <th className="py-3 px-3.5 text-center">Confianza</th>
                   <th className="py-3 px-3.5 text-center">Inconsistencia</th>
-                  <th className="py-3 px-3.5 text-center">Grupo</th>
+                  <th className="py-3 px-3.5 text-center">Revisión Humana</th>
                   <th className="py-3 px-3.5 text-right">Detalle</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {paginated.map(r => {
                   const a = r.analisis;
+                  const tipoPqr = a?.tipo_pqr || (a?.categoria === 'DATOS / INFORMACIÓN' ? 'PETICIÓN' : 'RECLAMO');
+                  const isInconsistent = a?.existe_inconsistencia === 'SI' || a?.posible_inconsistencia;
+                  const needsReview = a?.requiere_revision_humana === 'SI' || a?.requiere_revision;
+
+                  const tipoColor = 
+                    tipoPqr === 'PETICIÓN' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                    tipoPqr === 'QUEJA' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                    tipoPqr === 'SOLICITUD' ? 'bg-teal-50 text-teal-700 border-teal-200' :
+                    'bg-rose-50 text-rose-700 border-rose-200';
+
                   return (
                     <tr 
                       key={r.id} 
@@ -262,19 +294,21 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                       <td className="py-3 px-3.5 font-bold text-slate-900 whitespace-nowrap">
                         {r.numero_expediente}
                       </td>
-                      <td className="py-3 px-3.5 text-slate-600 max-w-[140px] truncate" title={r.resumen_original}>
-                        {r.resumen_original || '-'}
-                      </td>
-                      <td className="py-3 px-3.5 text-slate-800 max-w-xs truncate" title={r.descripcion_original}>
-                        {r.descripcion_original}
-                      </td>
-                      <td className="py-3 px-3.5">
-                        <span className="px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-800 border border-blue-200/60 whitespace-nowrap">
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-blue-50 text-blue-900 border border-blue-200 inline-block">
                           {a?.categoria || 'Sin procesar'}
                         </span>
                       </td>
-                      <td className="py-3 px-3.5 text-slate-600 max-w-[150px] truncate">
-                        {a?.subcategoria || '-'}
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${tipoColor}`}>
+                          {tipoPqr}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3.5 text-slate-800 font-medium whitespace-nowrap">
+                        {a?.producto || r.columnas_adicionales?.NOMBRE_PRODUCTO || '-'}
+                      </td>
+                      <td className="py-3 px-3.5 text-slate-800 max-w-sm truncate" title={r.descripcion_original}>
+                        {r.descripcion_original}
                       </td>
                       <td className="py-3 px-3.5 text-center whitespace-nowrap">
                         {a ? (
@@ -285,22 +319,28 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                               ? 'bg-amber-100 text-amber-800' 
                               : 'bg-rose-100 text-rose-800'
                           }`}>
-                            {a.confianza}% ({a.nivel_confianza})
+                            {a.confianza}%
                           </span>
                         ) : '-'}
                       </td>
                       <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                        {a?.posible_inconsistencia ? (
+                        {isInconsistent ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-semibold text-[11px]">
                             <ShieldAlert className="w-3 h-3 mr-1" />
-                            Detectada
+                            SÍ
                           </span>
                         ) : (
-                          <span className="text-slate-400">-</span>
+                          <span className="text-slate-400 text-[11px]">NO</span>
                         )}
                       </td>
-                      <td className="py-3 px-3.5 text-center whitespace-nowrap font-mono text-slate-600">
-                        {r.grupo_id || 'N/A'}
+                      <td className="py-3 px-3.5 text-center whitespace-nowrap">
+                        {needsReview ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold text-[11px]">
+                            SÍ
+                          </span>
+                        ) : (
+                          <span className="text-emerald-700 font-medium text-[11px]">NO</span>
+                        )}
                       </td>
                       <td className="py-3 px-3.5 text-right">
                         <button 
@@ -363,83 +403,211 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
               </button>
             </div>
 
-            {/* Section 1: Datos Originales */}
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2.5">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                1. DATOS ORIGINALES DEL EXPEDIENTE
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="font-semibold text-slate-500 block">Número de expediente:</span>
-                  <span className="font-bold text-slate-900">{activeRecord.numero_expediente}</span>
-                </div>
-                <div>
-                  <span className="font-semibold text-slate-500 block">Resumen original:</span>
-                  <span className="text-slate-800">{activeRecord.resumen_original || 'Sin resumen'}</span>
-                </div>
+            {/* Section 1: Datos de Entrada según Orden de Prioridad */}
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  1. ENTRADA Y ORDEN DE PRIORIDAD DE INFORMACIÓN
+                </h4>
+                <span className="text-[11px] text-slate-500">Expediente: <strong>{activeRecord.numero_expediente}</strong></span>
               </div>
-              <div className="text-xs pt-1">
-                <span className="font-semibold text-slate-500 block mb-0.5">Descripción completa de la radicación:</span>
-                <p className="p-2.5 rounded-lg bg-white border border-slate-200 text-slate-800 leading-relaxed">
+              
+              {/* Prioridad 1 */}
+              <div className="p-3 bg-white border-2 border-blue-200 rounded-lg space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wide">
+                    1. DESC_DETALLADA (Fuente Principal)
+                  </span>
+                  <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">Prioridad 1</span>
+                </div>
+                <p className="text-xs text-slate-900 leading-relaxed font-normal whitespace-pre-wrap">
                   {activeRecord.descripcion_original}
                 </p>
               </div>
+
+              {/* Prioridad 2 y 3 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
+                  <span className="text-[11px] font-bold text-slate-600 block uppercase">
+                    2. SUBMOTIVO (Contexto de Apoyo)
+                  </span>
+                  <span className="text-slate-800 font-medium">
+                    {activeRecord.columnas_adicionales?.SUBMOTIVO || activeRecord.resumen_original || 'No provisto'}
+                  </span>
+                </div>
+                <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
+                  <span className="text-[11px] font-bold text-slate-600 block uppercase">
+                    3. NOMBRE_PRODUCTO (Contexto de Apoyo)
+                  </span>
+                  <span className="text-slate-800 font-medium">
+                    {activeRecord.columnas_adicionales?.NOMBRE_PRODUCTO || activeRecord.analisis?.producto || 'No provisto'}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            {/* Section 2: Análisis IA (Lector Inteligente) */}
+            {/* Section 2: Análisis e Interpretación IA */}
             {activeRecord.analisis ? (
-              <div className="bg-blue-50/40 rounded-xl p-4 border border-blue-100 space-y-3">
+              <div className="bg-blue-50/30 rounded-xl p-4 border border-blue-100 space-y-4">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-blue-900 flex items-center">
-                    <Sparkles className="w-3.5 h-3.5 mr-1 text-blue-600" />
-                    2. ANÁLISIS DEL LECTOR INTELIGENTE PQRS
+                    <Sparkles className="w-3.5 h-3.5 mr-1.5 text-blue-600" />
+                    2. RESULTADOS DE CLASIFICACIÓN E INTERPRETACIÓN
                   </h4>
-                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                    activeRecord.analisis.nivel_confianza === 'Alta' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                    activeRecord.analisis.confianza >= 85 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                    activeRecord.analisis.confianza >= 70 ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                    'bg-rose-100 text-rose-800 border border-rose-200'
                   }`}>
-                    Confianza: {activeRecord.analisis.confianza}% ({activeRecord.analisis.nivel_confianza})
+                    Nivel de Confianza: {activeRecord.analisis.confianza}/100 ({activeRecord.analisis.nivel_confianza})
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
-                  <div className="p-2 rounded bg-white border border-blue-100">
-                    <span className="text-slate-500 block font-medium">Categoría IA:</span>
-                    <span className="font-bold text-blue-950">{activeRecord.analisis.categoria}</span>
+                {/* Official 16-Category Classification Card */}
+                <div className="p-4 bg-gradient-to-r from-blue-900 to-indigo-900 rounded-xl text-white shadow-md space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-blue-200">
+                        Categoría General Asignada (1 de 16 Oficiales)
+                      </span>
+                      <h5 className="text-lg font-black text-white tracking-wide">
+                        {activeRecord.analisis.categoria}
+                      </h5>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 bg-white/15 border border-white/20 rounded-lg text-xs font-bold text-white">
+                        Confianza: {activeRecord.analisis.confianza}%
+                      </span>
+                      <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                        activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision
+                          ? 'bg-amber-400 text-slate-900'
+                          : 'bg-emerald-500 text-white'
+                      }`}>
+                        Revisión Humana: {activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision ? 'SÍ' : 'NO'}
+                      </span>
+                    </div>
                   </div>
-                  <div className="p-2 rounded bg-white border border-blue-100">
-                    <span className="text-slate-500 block font-medium">Subcategoría IA:</span>
-                    <span className="font-bold text-slate-900">{activeRecord.analisis.subcategoria}</span>
-                  </div>
-                  <div className="p-2 rounded bg-white border border-blue-100">
-                    <span className="text-slate-500 block font-medium">Producto detectado:</span>
-                    <span className="font-semibold text-slate-800">{activeRecord.analisis.producto}</span>
+
+                  {/* Formato JSON Oficial */}
+                  <div className="bg-slate-950/80 rounded-lg p-3 border border-white/10 font-mono text-xs text-blue-200">
+                    <span className="text-[10px] text-slate-400 block mb-1 font-sans font-semibold">
+                      FORMATO DE SALIDA EXACTO (JSON):
+                    </span>
+                    <pre className="text-emerald-300 overflow-x-auto text-[11px] leading-tight">
+{JSON.stringify({
+  expediente: activeRecord.numero_expediente,
+  categoria: activeRecord.analisis.categoria,
+  confianza: activeRecord.analisis.confianza,
+  requiere_revision_humana: Boolean(activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision)
+}, null, 2)}
+                    </pre>
                   </div>
                 </div>
 
-                <div className="space-y-2 text-xs">
-                  <div>
-                    <span className="font-semibold text-slate-600 block">Problema principal identificado:</span>
-                    <p className="text-slate-800 p-2 rounded bg-white border border-slate-200">
-                      {activeRecord.analisis.problema_principal}
+                {/* Grid con Producto, Tipo PQR, Motivo, Submotivo */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                  <div className="p-2.5 rounded-lg bg-white border border-slate-200">
+                    <span className="text-slate-500 block font-medium text-[11px]">Tipo de PQR:</span>
+                    <span className="font-bold text-blue-900 text-sm">
+                      {activeRecord.analisis.tipo_pqr || (activeRecord.analisis.categoria === 'DATOS / INFORMACIÓN' ? 'PETICIÓN' : 'RECLAMO')}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white border border-slate-200">
+                    <span className="text-slate-500 block font-medium text-[11px]">Producto:</span>
+                    <span className="font-bold text-slate-900 text-sm">
+                      {activeRecord.analisis.producto || 'NO IDENTIFICADO'}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white border border-slate-200">
+                    <span className="text-slate-500 block font-medium text-[11px]">Categoría Oficial:</span>
+                    <span className="font-bold text-slate-900 truncate block">
+                      {activeRecord.analisis.categoria}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white border border-slate-200">
+                    <span className="text-slate-500 block font-medium text-[11px]">Submotivo / Ref:</span>
+                    <span className="font-semibold text-slate-800 truncate block">
+                      {activeRecord.analisis.submotivo || activeRecord.analisis.subcategoria || activeRecord.analisis.categoria}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Detalle exacto */}
+                <div className="space-y-2.5 text-xs">
+                  <div className="p-3 rounded-lg bg-white border border-slate-200">
+                    <span className="font-bold text-slate-700 block mb-1">
+                      Qué solicita exactamente el cliente:
+                    </span>
+                    <p className="text-slate-900 font-medium">
+                      {activeRecord.analisis.que_solicita_exactamente || activeRecord.analisis.solicitud_cliente}
                     </p>
                   </div>
-                  <div>
-                    <span className="font-semibold text-slate-600 block">Solicitud real del cliente:</span>
-                    <p className="text-slate-800 p-2 rounded bg-white border border-slate-200">
-                      {activeRecord.analisis.solicitud_cliente}
+
+                  <div className="p-3 rounded-lg bg-white border border-slate-200">
+                    <span className="font-bold text-slate-700 block mb-1">
+                      Hechos principales:
+                    </span>
+                    <p className="text-slate-800">
+                      {activeRecord.analisis.hechos_principales || activeRecord.analisis.problema_principal}
                     </p>
                   </div>
-                  <div>
-                    <span className="font-semibold text-blue-900 block">Resumen normalizado IA:</span>
-                    <p className="text-blue-950 font-medium p-2 rounded bg-blue-100/50 border border-blue-200">
-                      {activeRecord.analisis.resumen_normalizado}
+
+                  <div className="p-3 rounded-lg bg-white border border-slate-200">
+                    <span className="font-bold text-slate-700 block mb-1">
+                      Palabras o frases que sustentan la clasificación:
+                    </span>
+                    <p className="text-slate-700 italic">
+                      "{activeRecord.analisis.sustento_clasificacion || activeRecord.analisis.justificacion}"
                     </p>
                   </div>
-                  <div>
-                    <span className="font-semibold text-slate-600 block">Justificación de la clasificación:</span>
-                    <p className="text-slate-700 italic p-2 rounded bg-white border border-slate-200">
-                      "{activeRecord.analisis.justificacion}"
-                    </p>
+                </div>
+
+                {/* Inconsistencias y Revisión Humana */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
+                  {/* Inconsistencia */}
+                  <div className={`p-3 rounded-lg border ${
+                    activeRecord.analisis.existe_inconsistencia === 'SI' || activeRecord.analisis.posible_inconsistencia
+                      ? 'bg-rose-50/70 border-rose-200'
+                      : 'bg-emerald-50/50 border-emerald-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-slate-800">Inconsistencia con clasificación original:</span>
+                      <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${
+                        activeRecord.analisis.existe_inconsistencia === 'SI' || activeRecord.analisis.posible_inconsistencia
+                          ? 'bg-rose-200 text-rose-800'
+                          : 'bg-emerald-200 text-emerald-800'
+                      }`}>
+                        {activeRecord.analisis.existe_inconsistencia === 'SI' || activeRecord.analisis.posible_inconsistencia ? 'SÍ' : 'NO'}
+                      </span>
+                    </div>
+                    {(activeRecord.analisis.existe_inconsistencia === 'SI' || activeRecord.analisis.posible_inconsistencia) && (
+                      <p className="text-rose-900 mt-1 text-[11px]">
+                        {activeRecord.analisis.motivo_inconsistencia || 'Existe diferencia sustancial entre la descripción detallada y el resumen o submotivo registrado originalmente.'}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Revisión Humana */}
+                  <div className={`p-3 rounded-lg border ${
+                    activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision
+                      ? 'bg-amber-50/70 border-amber-200'
+                      : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-slate-800">Requiere Revisión Humana:</span>
+                      <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${
+                        activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision
+                          ? 'bg-amber-200 text-amber-900'
+                          : 'bg-emerald-100 text-emerald-800'
+                      }`}>
+                        {activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision ? 'SÍ' : 'NO'}
+                      </span>
+                    </div>
+                    {(activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision) && (
+                      <p className="text-amber-950 mt-1 text-[11px]">
+                        {activeRecord.analisis.motivo_de_revision || 'Caso con elementos atípicos, ambigüedad o alerta que amerita validación por un analista humano.'}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

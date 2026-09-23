@@ -68,16 +68,48 @@ export const CategoriasView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight">Catálogo Oficial de Categorías y Tipologías</h2>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">Catálogo Oficial de 16 Categorías PQR</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Estructura jerárquica de referencia utilizada por el modelo de IA para clasificar y normalizar las radicaciones
+            Estructura estricta y cerrada: UNA PQR = UNA CATEGORÍA GENERAL. No se crean categorías nuevas.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <span className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-xs font-bold">
-            {categories.length} Categorías Oficiales
+            16 Categorías Oficiales
           </span>
+        </div>
+      </div>
+
+      {/* Jerarquía de Prioridad Oficial (1 al 16) */}
+      <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-amber-700" />
+            Regla de Prioridad de Clasificación Oficial (Precedencia Estricta)
+          </h3>
+          <span className="text-[11px] font-semibold text-amber-800">1 (Mayor Prioridad) &rarr; 16 (Menor Prioridad)</span>
+        </div>
+        <p className="text-xs text-amber-900 leading-relaxed">
+          Cuando una descripción contenga múltiples términos, conceptos o reclamaciones simultáneas, la IA resuelve obligatoriamente asignando la categoría de mayor precedencia:
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1.5 pt-1 text-[11px] font-bold">
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">1. FRAUDE</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">2. PSE</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">3. CUOTA MANEJO</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">4. SEGUROS</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">5. GMF / 4X1000</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">6. PAGOS/ABONOS</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">7. TRANSFERENCIAS</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">8. TARJETAS</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">9. CRÉDITOS</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">10. TRANSACCIONES</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">11. CUENTAS</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">12. COBROS/CARGOS</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">13. DATOS/INFO</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">14. SERVICIO</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">15. OTRAS</span>
+          <span className="px-2 py-1 bg-white border border-amber-300 rounded text-amber-900 text-center">16. REV. HUMANA</span>
         </div>
       </div>
 

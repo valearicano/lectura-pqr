@@ -69,23 +69,29 @@ export function exportEnrichedExcel(
       }
     }
 
-    // 2. Append the 17 required AI columns
+    // 2. Append the structured AI analysis columns (16 Categorías Oficiales)
     const a = r.analisis;
-    row['categoria_ia'] = a?.categoria || 'No procesado';
-    row['subcategoria_ia'] = a?.subcategoria || 'No procesado';
-    row['tema_principal'] = a?.tema_principal || 'No procesado';
-    row['subtema'] = a?.subtema || 'No procesado';
-    row['producto_detectado'] = a?.producto || 'NO IDENTIFICADO';
-    row['problema_principal'] = a?.problema_principal || '';
-    row['solicitud_cliente'] = a?.solicitud_cliente || '';
-    row['resumen_normalizado'] = a?.resumen_normalizado || '';
-    row['justificacion_clasificacion'] = a?.justificacion || '';
+    row['categoria'] = a?.categoria || 'Sin procesar';
+    row['confianza'] = a?.confianza !== undefined ? a.confianza : 'N/A';
+    row['requiere_revision_humana'] = a?.requiere_revision_humana === 'SI' || a?.requiere_revision ? 'SI' : 'NO';
+    row['motivo_de_revision'] = a?.motivo_de_revision || '';
+    row['existe_inconsistencia'] = a?.existe_inconsistencia === 'SI' || a?.posible_inconsistencia ? 'SI' : 'NO';
+    row['motivo_inconsistencia'] = a?.motivo_inconsistencia || '';
+
+    // Complementary details
+    row['tipo_pqr'] = a?.tipo_pqr || 'RECLAMO';
+    row['producto'] = a?.producto || 'NO IDENTIFICADO';
+    row['motivo'] = a?.motivo || a?.categoria || 'No procesado';
+    row['submotivo'] = a?.submotivo || a?.categoria || 'No procesado';
+    row['que_solicita_exactamente'] = a?.que_solicita_exactamente || a?.solicitud_cliente || '';
+    row['hechos_principales'] = a?.hechos_principales || a?.problema_principal || '';
+    row['palabras_o_frases_sustento'] = a?.sustento_clasificacion || a?.justificacion || '';
+    row['nivel_confianza'] = a?.nivel_confianza || (a?.confianza && a.confianza >= 85 ? 'Alta' : a?.confianza && a.confianza >= 70 ? 'Media' : 'Baja');
+
+    // Grouping and workflow columns
+    row['grupo_similitud_id'] = r.grupo_id || 'N/A';
     row['similitud_grupo'] = r.similitud_grupo !== undefined ? `${(r.similitud_grupo * 100).toFixed(1)}%` : 'N/A';
-    row['grupo_id'] = r.grupo_id || 'N/A';
-    row['confianza_ia'] = a?.confianza !== undefined ? `${a.confianza}%` : 'N/A';
-    row['nivel_confianza'] = a?.nivel_confianza || 'N/A';
-    row['posible_inconsistencia'] = a?.posible_inconsistencia ? 'SÍ' : 'NO';
-    row['requiere_revision'] = a?.requiere_revision ? 'SÍ' : 'NO';
+    row['resumen_normalizado'] = a?.resumen_normalizado || '';
     row['estado_revision'] = a?.estado_revision || 'PENDIENTE';
     row['fecha_analisis'] = a?.fecha_analisis || new Date().toISOString().split('T')[0];
 

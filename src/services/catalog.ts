@@ -1,134 +1,170 @@
-import { CategoryItem } from '../types';
+import { CategoryItem, CATEGORIAS_OFICIALES_16 } from '../types';
 
 export const DEFAULT_CATALOG: CategoryItem[] = [
   {
-    id: 'cat-pagos',
-    nombre: 'PAGOS',
-    descripcion: 'Gestiones relacionadas con pagos de obligaciones, abonos, canales y aplicación contable',
+    id: 'cat-cuota-manejo',
+    nombre: 'CUOTA DE MANEJO',
+    descripcion: 'Todo lo relacionado con cuota de manejo (cobro, reversión, exoneración o aclaración)',
     activa: true,
     subcategorias: [
-      { id: 'sub-pagos-1', nombre: 'Aplicación de pago', activa: true, descripcion: 'Pago efectuado pero no reflejado o no aplicado en el saldo' },
-      { id: 'sub-pagos-2', nombre: 'Pago no reflejado', activa: true, descripcion: 'Pago que no aparece en el extracto o consulta de saldo' },
-      { id: 'sub-pagos-3', nombre: 'Pago duplicado', activa: true, descripcion: 'Cobro o débito doble por una misma transacción de pago' },
-      { id: 'sub-pagos-4', nombre: 'Pago rechazado', activa: true, descripcion: 'Inconvenientes en el procesamiento o rechazo del pago' },
-      { id: 'sub-pagos-5', nombre: 'Devolución de pago', activa: true, descripcion: 'Solicitud de reintegro de dinero por pagos erróneos o en exceso' },
-      { id: 'sub-pagos-6', nombre: 'Acuerdo o convenio de pago', activa: true, descripcion: 'Negociación de acuerdos, refinanciación o convenios' },
-      { id: 'sub-pagos-7', nombre: 'Medios de pago', activa: true, descripcion: 'Consultas o problemas sobre canales, tarjetas, PSE u otros medios' },
-      { id: 'sub-pagos-8', nombre: 'Otro tema de pagos', activa: true, descripcion: 'Otros casos concernientes a pagos' }
+      { id: 'sub-cm-1', nombre: 'Cobro de cuota de manejo', activa: true, descripcion: 'Inconformidad con cargo facturado' },
+      { id: 'sub-cm-2', nombre: 'Solicitud de reversión/devolución', activa: true, descripcion: 'Reclamo para anular cobro' },
+      { id: 'sub-cm-3', nombre: 'Exoneración no aplicada', activa: true, descripcion: 'Incumplimiento de acuerdo de exoneración' }
     ]
   },
   {
-    id: 'cat-cobros',
-    nombre: 'COBROS',
-    descripcion: 'Inconformidades o consultas con conceptos liquidados, tasas, comisiones o saldos',
+    id: 'cat-pse',
+    nombre: 'PSE',
+    descripcion: 'Operaciones por pasarela PSE (errores, pagos, rechazos, compras o soporte)',
     activa: true,
     subcategorias: [
-      { id: 'sub-cobros-1', nombre: 'Cobro de intereses', activa: true, descripcion: 'Inconformidad con intereses corrientes, de mora o capitalizados' },
-      { id: 'sub-cobros-2', nombre: 'Cobro no reconocido', activa: true, descripcion: 'Cargos o débitos en la cuenta o tarjeta que el cliente no identifica' },
-      { id: 'sub-cobros-3', nombre: 'Cobro de comisiones', activa: true, descripcion: 'Comisiones por transferencias, retiros, certificaciones o gestión' },
-      { id: 'sub-cobros-4', nombre: 'Cuotas de manejo', activa: true, descripcion: 'Inconformidad o solicitud de exoneración de cuota de manejo' },
-      { id: 'sub-cobros-5', nombre: 'Cobros adicionales', activa: true, descripcion: 'Cargos administrativos o conceptos adicionales no claros' },
-      { id: 'sub-cobros-6', nombre: 'Saldo incorrecto', activa: true, descripcion: 'Diferencias entre el saldo real y el reportado en extractos' },
-      { id: 'sub-cobros-7', nombre: 'Otro tema de cobros', activa: true, descripcion: 'Otras inconformidades relacionadas con cobros' }
+      { id: 'sub-pse-1', nombre: 'Error o falla técnica PSE', activa: true, descripcion: 'Mensajes de error, timeout o bloqueo' },
+      { id: 'sub-pse-2', nombre: 'Pago PSE rechazado con débito', activa: true, descripcion: 'Descuento en cuenta sin aprobación' },
+      { id: 'sub-pse-3', nombre: 'Soporte de transacción PSE', activa: true, descripcion: 'Solicitud de comprobante o validación' }
     ]
   },
   {
     id: 'cat-seguros',
     nombre: 'SEGUROS',
-    descripcion: 'Pólizas de vida, desempleo, fraude, automóvil u otros seguros vinculados',
+    descripcion: 'Pólizas y seguros asociados (vida, desempleo, tarjeta, cobro, cancelación o devolución)',
     activa: true,
     subcategorias: [
-      { id: 'sub-seguros-1', nombre: 'Tema de seguros', activa: true, descripcion: 'Consultas generales sobre coberturas o pólizas' },
-      { id: 'sub-seguros-2', nombre: 'Cobro de seguro', activa: true, descripcion: 'Cargos de primas de seguro en los extractos' },
-      { id: 'sub-seguros-3', nombre: 'Cancelación de seguro', activa: true, descripcion: 'Solicitud formal de desistimiento o cancelación de póliza' },
-      { id: 'sub-seguros-4', nombre: 'Seguro no reconocido', activa: true, descripcion: 'Seguros activados sin consentimiento informado' },
-      { id: 'sub-seguros-5', nombre: 'Información sobre seguro', activa: true, descripcion: 'Requerimientos de certificados o condiciones de póliza' },
-      { id: 'sub-seguros-6', nombre: 'Otro tema de seguros', activa: true, descripcion: 'Otros trámites con aseguradoras o pólizas' }
+      { id: 'sub-seg-1', nombre: 'Cobro de seguro', activa: true, descripcion: 'Descuento o cobro de prima' },
+      { id: 'sub-seg-2', nombre: 'Cancelación de seguro', activa: true, descripcion: 'Desistimiento de póliza' },
+      { id: 'sub-seg-3', nombre: 'Seguro no reconocido', activa: true, descripcion: 'Póliza no consentida' }
     ]
   },
   {
-    id: 'cat-aplicativos',
-    nombre: 'APLICATIVOS Y CANALES',
-    descripcion: 'Fallas técnicas en App móvil, portal web, cajeros, audio-respuesta o canal digital',
+    id: 'cat-gmf',
+    nombre: 'GMF / 4X1000',
+    descripcion: 'Gravamen a Movimientos Financieros (4x1000, marcación de cuenta exenta o devolución)',
     activa: true,
     subcategorias: [
-      { id: 'sub-app-1', nombre: 'Error en aplicativo', activa: true, descripcion: 'Fallo general o bloqueo en la aplicación' },
-      { id: 'sub-app-2', nombre: 'Error en página web', activa: true, descripcion: 'Problemas en el portal transaccional o página institucional' },
-      { id: 'sub-app-3', nombre: 'Error en aplicación móvil', activa: true, descripcion: 'Cierre inesperado, pantalla en blanco o error en smartphone' },
-      { id: 'sub-app-4', nombre: 'Problemas de acceso', activa: true, descripcion: 'Bloqueo de usuario, clave olvidada, OTP o biometría fallida' },
-      { id: 'sub-app-5', nombre: 'Error transaccional', activa: true, descripcion: 'Transacción interrumpida o código de error al operar' },
-      { id: 'sub-app-6', nombre: 'Problema con canal digital', activa: true, descripcion: 'Inconveniente con WhatsApp, chat virtual o portal' },
-      { id: 'sub-app-7', nombre: 'Otro problema tecnológico', activa: true, descripcion: 'Otras fallas de sistemas o infraestructura digital' }
+      { id: 'sub-gmf-1', nombre: 'Marcación de cuenta exenta', activa: true, descripcion: 'Solicitud de exención legal' },
+      { id: 'sub-gmf-2', nombre: 'Cobro indebido de GMF', activa: true, descripcion: 'Reclamo por descuento del 4x1000' }
+    ]
+  },
+  {
+    id: 'cat-transacciones',
+    nombre: 'TRANSACCIONES',
+    descripcion: 'Problemas generales con transacciones, operaciones o movimientos no fraudulentos',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-tra-1', nombre: 'Transacción pendiente / fallida', activa: true, descripcion: 'Operación no procesada o retenida' }
     ]
   },
   {
     id: 'cat-fraude',
-    nombre: 'FRAUDE Y SEGURIDAD',
-    descripcion: 'Transacciones no consentidas, suplantación de identidad, phishing o incidentes de seguridad',
+    nombre: 'FRAUDE / TRANSACCIÓN NO RECONOCIDA',
+    descripcion: 'Compras, débitos, retiros o transferencias desconocidas o no autorizadas por el cliente',
     activa: true,
     subcategorias: [
-      { id: 'sub-fraude-1', nombre: 'Fraude', activa: true, descripcion: 'Eventos delictivos o estafas perpetradas por terceros' },
-      { id: 'sub-fraude-2', nombre: 'Suplantación', activa: true, descripcion: 'Apertura de productos o créditos a nombre de la víctima' },
-      { id: 'sub-fraude-3', nombre: 'Movimiento no reconocido', activa: true, descripcion: 'Movimientos financieros no realizados por el titular' },
-      { id: 'sub-fraude-4', nombre: 'Compra no reconocida', activa: true, descripcion: 'Cargos en comercios físicos o virtuales no efectuados' },
-      { id: 'sub-fraude-5', nombre: 'Transferencia no reconocida', activa: true, descripcion: 'Envíos de dinero o transferencias sin autorización' },
-      { id: 'sub-fraude-6', nombre: 'Transacción no reconocida', activa: true, descripcion: 'Otras transacciones débito o crédito desconocidas' },
-      { id: 'sub-fraude-7', nombre: 'Otro tema de seguridad', activa: true, descripcion: 'Incidentes adicionales de ciberseguridad o sospechas' }
+      { id: 'sub-fra-1', nombre: 'Compra no reconocida', activa: true, descripcion: 'Consumo presencial o virtual desconocido' },
+      { id: 'sub-fra-2', nombre: 'Débito o retiro no autorizado', activa: true, descripcion: 'Sustracción de fondos no reconocida' }
     ]
   },
   {
-    id: 'cat-derechos',
-    nombre: 'DERECHOS Y PQRS',
-    descripcion: 'Mecanismos formales de quejas, peticiones legales, solicitudes de documentos o reclamos',
+    id: 'cat-pagos',
+    nombre: 'PAGOS / ABONOS',
+    descripcion: 'Pagos de cuotas, abonos a créditos, aplicación contable y reversiones de pago',
     activa: true,
     subcategorias: [
-      { id: 'sub-der-1', nombre: 'Derecho de petición', activa: true, descripcion: 'Petición formal al amparo de la normatividad constitucional' },
-      { id: 'sub-der-2', nombre: 'Petición', activa: true, descripcion: 'Solicitud formal de un servicio, acción o trámite' },
-      { id: 'sub-der-3', nombre: 'Queja', activa: true, descripcion: 'Inconformidad con la atención recibida o el personal' },
-      { id: 'sub-der-4', nombre: 'Reclamo', activa: true, descripcion: 'Exigencia de cumplimiento o revisión por insatisfacción con el producto' },
-      { id: 'sub-der-5', nombre: 'Solicitud de información', activa: true, descripcion: 'Requerimiento de aclaraciones, tasas o políticas' },
-      { id: 'sub-der-6', nombre: 'Solicitud de documentos', activa: true, descripcion: 'Paz y salvo, copias de pagarés, contratos o extractos históricos' },
-      { id: 'sub-der-7', nombre: 'Otro tema PQRS', activa: true, descripcion: 'Otras manifestaciones formales' }
+      { id: 'sub-pag-1', nombre: 'Pago no aplicado / no reflejado', activa: true, descripcion: 'Abono realizado pendiente de acreditación' },
+      { id: 'sub-pag-2', nombre: 'Reversión / devolución de abono', activa: true, descripcion: 'Reintegro por pago duplicado o erróneo' }
     ]
   },
   {
-    id: 'cat-otros',
-    nombre: 'OTROS',
-    descripcion: 'Casos que escapan al catálogo estándar, información insuficiente o requieren triaje humano',
+    id: 'cat-tarjetas',
+    nombre: 'TARJETAS',
+    descripcion: 'Tarjetas de crédito o débito (entrega, activación, bloqueo, cupo o renovación)',
     activa: true,
     subcategorias: [
-      { id: 'sub-otros-1', nombre: 'Otra categoría', activa: true, descripcion: 'Tema válido pero no contemplado en el catálogo oficial' },
-      { id: 'sub-otros-2', nombre: 'No identificado', activa: true, descripcion: 'No es posible determinar la categoría por falta de contexto' },
-      { id: 'sub-otros-3', nombre: 'Información insuficiente', activa: true, descripcion: 'El texto es demasiado vago o ambiguo para clasificar' },
-      { id: 'sub-otros-4', nombre: 'Revisión humana', activa: true, descripcion: 'Caso complejo que amerita análisis directo por un analista' }
+      { id: 'sub-tar-1', nombre: 'Entrega o reposición de plástico', activa: true, descripcion: 'Envío y recepción de tarjeta' },
+      { id: 'sub-tar-2', nombre: 'Bloqueo / desbloqueo', activa: true, descripcion: 'Gestión operativa del plástico' }
+    ]
+  },
+  {
+    id: 'cat-creditos',
+    nombre: 'CRÉDITOS / CARTERA',
+    descripcion: 'Créditos, saldos, cuotas, intereses, refinanciación y estado de cartera (salvo abonos)',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-cre-1', nombre: 'Saldo y liquidación de cuota', activa: true, descripcion: 'Revisión de plan de pagos o intereses' },
+      { id: 'sub-cre-2', nombre: 'Refinanciación / acuerdo', activa: true, descripcion: 'Reestructuración de obligación' }
+    ]
+  },
+  {
+    id: 'cat-cuentas',
+    nombre: 'CUENTAS',
+    descripcion: 'Cuentas de ahorros o corrientes que no correspondan a otra categoría específica',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-cta-1', nombre: 'Apertura y cancelación', activa: true, descripcion: 'Trámites sobre cuentas' },
+      { id: 'sub-cta-2', nombre: 'Estado y bloqueos de cuenta', activa: true, descripcion: 'Operatividad de la cuenta' }
+    ]
+  },
+  {
+    id: 'cat-transferencias',
+    nombre: 'TRANSFERENCIAS',
+    descripcion: 'Transferencias interbancarias o entre cuentas (salvo no reconocidas/fraude)',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-trf-1', nombre: 'Transferencia no acreditada / demorada', activa: true, descripcion: 'Retención en canje o ciclo' }
+    ]
+  },
+  {
+    id: 'cat-cobros',
+    nombre: 'COBROS / CARGOS',
+    descripcion: 'Cobros o cargos que no correspondan a cuota de manejo, GMF, seguro o crédito',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-cob-1', nombre: 'Comisiones y cargos varios', activa: true, descripcion: 'Tarifas operativas o no claras' }
+    ]
+  },
+  {
+    id: 'cat-datos',
+    nombre: 'DATOS / INFORMACIÓN',
+    descripcion: 'Solicitud de certificados, paz y salvo, soportes, extractos históricos o datos personales',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-dat-1', nombre: 'Certificados y paz y salvo', activa: true, descripcion: 'Expedición documental' },
+      { id: 'sub-dat-2', nombre: 'Copia de contratos y pagarés', activa: true, descripcion: 'Soportes jurídicos' }
+    ]
+  },
+  {
+    id: 'cat-servicio',
+    nombre: 'SERVICIO / ATENCIÓN',
+    descripcion: 'Calidad de atención, inconformidad con asesores, oficinas o canales de contacto',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-ser-1', nombre: 'Atención en oficina / canal', activa: true, descripcion: 'Mala atención o tiempos de espera' }
+    ]
+  },
+  {
+    id: 'cat-otras',
+    nombre: 'OTRAS',
+    descripcion: 'Casos que no corresponden claramente a ninguna de las categorías anteriores',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-otr-1', nombre: 'Otros casos generales', activa: true, descripcion: 'No clasificable en categorías previas' }
+    ]
+  },
+  {
+    id: 'cat-revision',
+    nombre: 'REVISIÓN HUMANA',
+    descripcion: 'Descripción vacía, ambigua, contradictoria o sin información suficiente para clasificar',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-rev-1', nombre: 'Información insuficiente / vacía', activa: true, descripcion: 'Requiere contacto o triaje manual' }
     ]
   }
 ];
 
-export function getCatalogSummary(catalog: CategoryItem[] = DEFAULT_CATALOG): string {
-  return catalog
-    .filter(c => c.activa)
-    .map(c => {
-      const subs = c.subcategorias.filter(s => s.activa).map(s => s.nombre).join(', ');
-      return `- ${c.nombre}: [${subs}]`;
-    })
-    .join('\n');
+export function getOfficialCategoriesList(): string[] {
+  return [...CATEGORIAS_OFICIALES_16];
 }
 
-export function normalizeCategoryName(raw: string): string {
-  const clean = raw.trim().toUpperCase();
-  if (clean.includes('PAGO') || clean.includes('ABONO')) return 'PAGOS';
-  if (clean.includes('COBRO') || clean.includes('INTERES') || clean.includes('COMISION') || clean.includes('CUOTA')) return 'COBROS';
-  if (clean.includes('SEGURO') || clean.includes('POLIZA')) return 'SEGUROS';
-  if (clean.includes('APP') || clean.includes('APLICATIVO') || clean.includes('WEB') || clean.includes('CLAVE') || clean.includes('ACCESO')) return 'APLICATIVOS Y CANALES';
-  if (clean.includes('FRAUDE') || clean.includes('SUPLANT') || clean.includes('NO RECONOCID')) return 'FRAUDE Y SEGURIDAD';
-  if (clean.includes('DERECHO') || clean.includes('PETICION') || clean.includes('QUEJA') || clean.includes('RECLAMO')) return 'DERECHOS Y PQRS';
-  return raw.trim();
-}
-
-import { PQRSMainCategory } from '../types';
-
-export function getOfficialCatalog(): PQRSMainCategory[] {
+export function getOfficialCatalog(): { id: string; nombre: string; descripcion: string; subcategorias: string[]; activa: boolean }[] {
   return DEFAULT_CATALOG.map(c => ({
     id: c.id,
     nombre: c.nombre,
@@ -138,3 +174,12 @@ export function getOfficialCatalog(): PQRSMainCategory[] {
   }));
 }
 
+export function getCatalogSummary(catalog: CategoryItem[] = DEFAULT_CATALOG): string {
+  return catalog
+    .filter(c => c.activa)
+    .map(c => {
+      const subs = c.subcategorias.filter(s => s.activa).map(s => s.nombre).join(', ');
+      return `- ${c.nombre}: ${c.descripcion}. Subcategorías: [${subs}]`;
+    })
+    .join('\n');
+}

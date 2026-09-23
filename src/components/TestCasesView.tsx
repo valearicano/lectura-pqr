@@ -58,28 +58,23 @@ export const TestCasesView: React.FC = () => {
   }, []);
 
   const passedCount = results.filter(r => {
-    const subLower = (r.analisis.subcategoria || '').toLowerCase();
-    const catLower = (r.analisis.categoria || '').toLowerCase();
-    const espLower = r.esperado.toLowerCase();
+    const catUpper = (r.analisis.categoria || '').toUpperCase().trim();
+    const espUpper = (r.esperado || '').toUpperCase().trim();
+    if (catUpper === espUpper) return true;
     
-    // Check if matched expected concept
-    if (espLower.includes('pago') && (subLower.includes('pago') || catLower.includes('pago'))) return true;
-    if (espLower.includes('interés') && subLower.includes('interes')) return true;
-    if (espLower.includes('seguro') && (subLower.includes('seguro') || catLower.includes('seguro'))) return true;
-    if (espLower.includes('cuota') && subLower.includes('cuota')) return true;
-    if (espLower.includes('aplicativo') || espLower.includes('acceso')) {
-      return subLower.includes('acceso') || catLower.includes('aplicativo');
-    }
-    if (espLower.includes('fraude') || espLower.includes('compra no reconocida')) {
-      return subLower.includes('reconocid') || catLower.includes('fraude');
-    }
-    if (espLower.includes('petición') || espLower.includes('peticion')) {
-      return subLower.includes('peticion') || catLower.includes('derecho');
-    }
-    if (espLower.includes('insuficiente') || espLower.includes('revisión')) {
-      return r.analisis.requiere_revision || subLower.includes('insuficiente') || catLower.includes('otro');
-    }
-    return true;
+    // Fuzzy match within official category definitions
+    if (espUpper.includes('PAGOS') && catUpper.includes('PAGOS')) return true;
+    if (espUpper.includes('COBROS') && (catUpper.includes('COBROS') || catUpper.includes('CRÉDITOS'))) return true;
+    if (espUpper.includes('SEGUROS') && catUpper.includes('SEGUROS')) return true;
+    if (espUpper.includes('CUOTA DE MANEJO') && catUpper.includes('CUOTA DE MANEJO')) return true;
+    if (espUpper.includes('SERVICIO') && (catUpper.includes('SERVICIO') || catUpper.includes('CUENTAS'))) return true;
+    if (espUpper.includes('FRAUDE') && catUpper.includes('FRAUDE')) return true;
+    if (espUpper.includes('DATOS') && catUpper.includes('DATOS')) return true;
+    if (espUpper.includes('REVISIÓN') && (r.analisis.requiere_revision || catUpper.includes('REVISIÓN'))) return true;
+    if (espUpper.includes('PSE') && catUpper.includes('PSE')) return true;
+    if (espUpper.includes('GMF') && catUpper.includes('GMF')) return true;
+
+    return false;
   }).length;
 
   return (
