@@ -58,11 +58,13 @@ export default function App() {
     setCurrentTab('categorias');
   };
 
-  // Pending reviews count
+  // Pending reviews count: Only cases categorized as REVISIÓN HUMANA or flagged as requiring review
   const pendingReviewCount = records.filter(r => 
-    r.analisis?.requiere_revision || 
-    (r.analisis && r.analisis.confianza < 70) ||
-    r.analisis?.posible_inconsistencia
+    (r.analisis?.categoria === 'REVISIÓN HUMANA' || 
+     r.analisis?.requiere_revision_humana === 'SI' || 
+     r.analisis?.requiere_revision) &&
+    r.analisis?.estado_revision !== 'APROBADO' &&
+    r.analisis?.estado_revision !== 'AJUSTADO'
   ).length;
 
   return (

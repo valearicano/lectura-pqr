@@ -24,12 +24,13 @@ interface RevisionHumanaViewProps {
 export const RevisionHumanaView: React.FC<RevisionHumanaViewProps> = ({ records, onUpdateRecord }) => {
   const catalog = getOfficialCatalog();
   
-  // Pending review records
+  // Pending review records: Only cases that genuinely require human review or were categorized as REVISIÓN HUMANA
   const reviewQueue = records.filter(r => 
-    r.analisis?.requiere_revision || 
-    r.analisis?.posible_inconsistencia ||
-    (r.analisis && r.analisis.confianza < 70) ||
-    r.analisis?.estado_revision === 'PENDIENTE'
+    (r.analisis?.categoria === 'REVISIÓN HUMANA' || 
+     r.analisis?.requiere_revision_humana === 'SI' || 
+     r.analisis?.requiere_revision) &&
+    r.analisis?.estado_revision !== 'APROBADO' &&
+    r.analisis?.estado_revision !== 'AJUSTADO'
   );
 
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(

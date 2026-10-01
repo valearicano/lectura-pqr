@@ -45,22 +45,22 @@ export const DEFAULT_CATALOG: CategoryItem[] = [
     ]
   },
   {
-    id: 'cat-transacciones',
-    nombre: 'TRANSACCIONES',
-    descripcion: 'Problemas generales con transacciones, operaciones o movimientos no fraudulentos',
-    activa: true,
-    subcategorias: [
-      { id: 'sub-tra-1', nombre: 'Transacción pendiente / fallida', activa: true, descripcion: 'Operación no procesada o retenida' }
-    ]
-  },
-  {
     id: 'cat-fraude',
-    nombre: 'FRAUDE / TRANSACCIÓN NO RECONOCIDA',
-    descripcion: 'Compras, débitos, retiros o transferencias desconocidas o no autorizadas por el cliente',
+    nombre: 'FRAUDE / NO RECONOCIDO',
+    descripcion: 'Compras, débitos, retiros o transferencias desconocidas o no autorizadas por el cliente (Prioridad 1)',
     activa: true,
     subcategorias: [
       { id: 'sub-fra-1', nombre: 'Compra no reconocida', activa: true, descripcion: 'Consumo presencial o virtual desconocido' },
       { id: 'sub-fra-2', nombre: 'Débito o retiro no autorizado', activa: true, descripcion: 'Sustracción de fondos no reconocida' }
+    ]
+  },
+  {
+    id: 'cat-transacciones',
+    nombre: 'PROBLEMAS TRANSACCIONES',
+    descripcion: 'Problemas generales con transacciones, operaciones o movimientos no fraudulentos',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-tra-1', nombre: 'Transacción pendiente / fallida', activa: true, descripcion: 'Operación no procesada o retenida' }
     ]
   },
   {

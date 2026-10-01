@@ -29,7 +29,7 @@ export async function parseExcelFile(file: File): Promise<ParsedSheetData> {
     throw new Error('La hoja de cálculo está completamente vacía.');
   }
 
-  // Extract all unique headers found across the rows
+  // Extract all unique headers found across the rows in order of occurrence
   const headerSet = new Set<string>();
   rows.forEach(r => Object.keys(r).forEach(k => headerSet.add(k)));
   const headers = Array.from(headerSet);
@@ -43,7 +43,8 @@ export async function parseExcelFile(file: File): Promise<ParsedSheetData> {
 
 /**
  * Generates and downloads the enriched Excel file (PQRS_ANALIZADAS.xlsx)
- * preserving all original columns and appending the 17 AI enrichment columns.
+ * preserving all original columns (NO_SS, SUBMOTIVO, NOMBRE_PRODUCTO, FECHA_RADICACION, FECHA_DE_COMPROMISO, DESC_DETALLADA)
+ * and appending the exact master classification results.
  */
 export function exportEnrichedExcel(
   records: EnrichedPQRSRecord[],
@@ -51,49 +52,49 @@ export function exportEnrichedExcel(
   filterRevisionOnly = false
 ): void {
   const filteredRecords = filterRevisionOnly
-    ? records.filter(r => r.analisis?.requiere_revision)
+    ? records.filter(r => r.analisis?.requiere_revision || r.analisis?.requiere_revision_humana === 'SI' || r.analisis?.categoria === 'REVISIÓN HUMANA')
     : records;
 
   const exportRows = filteredRecords.map(r => {
-    // 1. Start with original columns
-    const row: Record<string, any> = {
-      numero_expediente: r.numero_expediente,
-      resumen_original: r.resumen_original,
-      descripcion_original: r.descripcion_original
-    };
+    const row: Record<string, any> = {};
 
-    // Add any additional original columns
-    if (r.columnas_adicionales) {
+    // 1. Maintain all original columns exactly as uploaded
+    if (r.columnas_adicionales && Object.keys(r.columnas_adicionales).length > 0) {
       for (const [key, val] of Object.entries(r.columnas_adicionales)) {
         row[key] = val;
       }
+    } else {
+      row['NO_SS'] = r.numero_expediente;
+      row['SUBMOTIVO'] = r.resumen_original;
+      row['DESC_DETALLADA'] = r.descripcion_original;
     }
 
-    // 2. Append the structured AI analysis columns (16 Categorías Oficiales)
+    // Ensure NO_SS is present
+    if (!('NO_SS' in row) && !('no_ss' in row)) {
+      row['NO_SS'] = r.numero_expediente;
+    }
+
+    // 2. Append standard AI master classification columns
     const a = r.analisis;
-    row['categoria'] = a?.categoria || 'Sin procesar';
-    row['confianza'] = a?.confianza !== undefined ? a.confianza : 'N/A';
-    row['requiere_revision_humana'] = a?.requiere_revision_humana === 'SI' || a?.requiere_revision ? 'SI' : 'NO';
-    row['motivo_de_revision'] = a?.motivo_de_revision || '';
-    row['existe_inconsistencia'] = a?.existe_inconsistencia === 'SI' || a?.posible_inconsistencia ? 'SI' : 'NO';
-    row['motivo_inconsistencia'] = a?.motivo_inconsistencia || '';
+    const cat = a?.categoria || 'Sin procesar';
+    const conf = a?.confianza !== undefined ? a.confianza : 90;
+    const reqRev = a?.requiere_revision_humana === 'SI' || a?.requiere_revision || cat === 'REVISIÓN HUMANA' ? 'SI' : 'NO';
 
-    // Complementary details
-    row['tipo_pqr'] = a?.tipo_pqr || 'RECLAMO';
-    row['producto'] = a?.producto || 'NO IDENTIFICADO';
-    row['motivo'] = a?.motivo || a?.categoria || 'No procesado';
-    row['submotivo'] = a?.submotivo || a?.categoria || 'No procesado';
-    row['que_solicita_exactamente'] = a?.que_solicita_exactamente || a?.solicitud_cliente || '';
-    row['hechos_principales'] = a?.hechos_principales || a?.problema_principal || '';
-    row['palabras_o_frases_sustento'] = a?.sustento_clasificacion || a?.justificacion || '';
-    row['nivel_confianza'] = a?.nivel_confianza || (a?.confianza && a.confianza >= 85 ? 'Alta' : a?.confianza && a.confianza >= 70 ? 'Media' : 'Baja');
+    row['CATEGORIA_MAESTRA'] = cat;
+    row['CONFIANZA'] = conf;
+    row['REQUIERE_REVISION_HUMANA'] = reqRev;
+    row['FORMATO_JSON_CORTO'] = JSON.stringify({
+      expediente: r.numero_expediente,
+      categoria: cat,
+      confianza: conf,
+      requiere_revision_humana: reqRev === 'SI'
+    });
 
-    // Grouping and workflow columns
-    row['grupo_similitud_id'] = r.grupo_id || 'N/A';
-    row['similitud_grupo'] = r.similitud_grupo !== undefined ? `${(r.similitud_grupo * 100).toFixed(1)}%` : 'N/A';
-    row['resumen_normalizado'] = a?.resumen_normalizado || '';
-    row['estado_revision'] = a?.estado_revision || 'PENDIENTE';
-    row['fecha_analisis'] = a?.fecha_analisis || new Date().toISOString().split('T')[0];
+    // Complementary audit details
+    row['MOTIVO_DE_REVISION'] = a?.motivo_de_revision || '';
+    row['EXISTE_INCONSISTENCIA'] = a?.existe_inconsistencia === 'SI' || a?.posible_inconsistencia ? 'SI' : 'NO';
+    row['TIPO_PQR'] = a?.tipo_pqr || (cat === 'DATOS / INFORMACIÓN' ? 'PETICIÓN' : 'RECLAMO');
+    row['FECHA_ANALISIS'] = a?.fecha_analisis || new Date().toISOString().split('T')[0];
 
     return row;
   });
@@ -106,11 +107,11 @@ export function exportEnrichedExcel(
 }
 
 /**
- * Exports summary of categories and counts to Excel
+ * Exports summary of master categories and counts to Excel
  */
 export function exportCategoriesSummaryExcel(
   records: EnrichedPQRSRecord[],
-  filename = 'RESUMEN_CATEGORIAS_PQRS.xlsx'
+  filename = 'RESUMEN_CATEGORIAS_MAESTRAS_PQRS.xlsx'
 ): void {
   const catMap: Record<string, { total: number; altaConf: number; inconsistencias: number; revision: number }> = {};
 
@@ -121,8 +122,8 @@ export function exportCategoriesSummaryExcel(
     }
     catMap[cat].total++;
     if (r.analisis?.nivel_confianza === 'Alta') catMap[cat].altaConf++;
-    if (r.analisis?.posible_inconsistencia) catMap[cat].inconsistencias++;
-    if (r.analisis?.requiere_revision) catMap[cat].revision++;
+    if (r.analisis?.posible_inconsistencia || r.analisis?.existe_inconsistencia === 'SI') catMap[cat].inconsistencias++;
+    if (r.analisis?.requiere_revision || r.analisis?.requiere_revision_humana === 'SI' || cat === 'REVISIÓN HUMANA') catMap[cat].revision++;
   });
 
   const summaryRows = Object.entries(catMap).map(([categoria, stats]) => ({
@@ -136,28 +137,26 @@ export function exportCategoriesSummaryExcel(
 
   const worksheet = XLSX.utils.json_to_sheet(summaryRows);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Categorías');
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Categorías Maestras');
   XLSX.writeFile(workbook, filename);
 }
 
 /**
- * Exports semantic groups summary to Excel
+ * Exports semantic groups to Excel
  */
-export function exportSemanticGroupsExcel(
+export function exportGroupsExcel(
   groups: SemanticGroup[],
-  filename = 'GRUPOS_SIMILARES_PQRS.xlsx'
+  filename = 'GRUPOS_SEMANTICOS_PQRS.xlsx'
 ): void {
   const rows = groups.map(g => ({
     grupo_id: g.id,
-    nombre_grupo: g.nombre,
+    nombre: g.nombre,
     categoria_sugerida: g.categoria_sugerida,
     cantidad_expedientes: g.cantidad_expedientes,
     similitud_promedio: `${(g.similitud_promedio * 100).toFixed(1)}%`,
-    similitud_minima: `${(g.similitud_minima * 100).toFixed(1)}%`,
-    similitud_maxima: `${(g.similitud_maxima * 100).toFixed(1)}%`,
     es_nuevo_patron: g.es_nuevo_patron ? 'SÍ' : 'NO',
-    ejemplo_1: g.ejemplos_descripciones[0] || '',
-    ejemplo_2: g.ejemplos_descripciones[1] || ''
+    descripcion_patron: g.descripcion_patron || '',
+    ejemplos_descripciones: (g.ejemplos_descripciones || []).join(' | ')
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -165,6 +164,4 @@ export function exportSemanticGroupsExcel(
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Grupos Semánticos');
   XLSX.writeFile(workbook, filename);
 }
-
-export const exportGroupsExcel = exportSemanticGroupsExcel;
 

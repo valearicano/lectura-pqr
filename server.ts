@@ -192,7 +192,7 @@ async function startServer() {
         analisis: analyses[idx]
       }));
 
-      res.json({ success: true, testCases: results });
+      res.json({ success: true, results, testCases: results });
     } catch (err: any) {
       res.status(500).json({ error: 'Error ejecutando casos de prueba', details: err.message });
     }

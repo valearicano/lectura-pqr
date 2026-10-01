@@ -11,13 +11,13 @@ export interface PQRSRecord {
   estado_procesamiento?: 'PENDIENTE' | 'PROCESANDO' | 'COMPLETADO' | 'ERROR';
 }
 
-export const CATEGORIAS_OFICIALES_16 = [
+export const CATEGORIAS_MAESTRAS_16 = [
   'CUOTA DE MANEJO',
   'PSE',
   'SEGUROS',
   'GMF / 4X1000',
-  'TRANSACCIONES',
-  'FRAUDE / TRANSACCIÓN NO RECONOCIDA',
+  'FRAUDE / NO RECONOCIDO',
+  'PROBLEMAS TRANSACCIONES',
   'PAGOS / ABONOS',
   'TARJETAS',
   'CRÉDITOS / CARTERA',
@@ -30,7 +30,9 @@ export const CATEGORIAS_OFICIALES_16 = [
   'REVISIÓN HUMANA'
 ] as const;
 
-export type CategoriaPQR16 = typeof CATEGORIAS_OFICIALES_16[number];
+export const CATEGORIAS_OFICIALES_16 = CATEGORIAS_MAESTRAS_16;
+
+export type CategoriaPQR16 = typeof CATEGORIAS_MAESTRAS_16[number] | 'FRAUDE / TRANSACCIÓN NO RECONOCIDA' | 'TRANSACCIONES';
 
 export type TipoPQR = 'PETICIÓN' | 'QUEJA' | 'RECLAMO' | 'SOLICITUD';
 
@@ -128,6 +130,8 @@ export interface ColumnDetectionResult {
   descripcionCol: string;
   submotivoCol?: string;
   productoCol?: string;
+  fechaRadicacionCol?: string;
+  fechaCompromisoCol?: string;
   todasLasColumnas: string[];
   confianzaDeteccion: {
     expediente: boolean;
@@ -135,6 +139,8 @@ export interface ColumnDetectionResult {
     descripcion: boolean;
     submotivo?: boolean;
     producto?: boolean;
+    fechaRadicacion?: boolean;
+    fechaCompromiso?: boolean;
   };
 }
 

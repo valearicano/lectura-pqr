@@ -40,8 +40,9 @@ export const TestCasesView: React.FC = () => {
     try {
       const res = await fetch('/api/test-cases');
       const data = await res.json();
-      if (data.success && Array.isArray(data.results)) {
-        setResults(data.results);
+      const testList = data.results || data.testCases;
+      if (data.success && Array.isArray(testList)) {
+        setResults(testList);
       } else {
         throw new Error(data.error || 'Error al ejecutar casos de prueba');
       }

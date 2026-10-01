@@ -16,95 +16,68 @@ export function validateRecords(
     datosBrutos: any;
   }[] = [];
 
-  const seenExpedientes = new Set<string>();
   let filasSinDescripcion = 0;
   let filasSinExpediente = 0;
   let filasDuplicadas = 0;
+  const seenExpedientes = new Map<string, number>();
 
   rows.forEach((row, index) => {
-    const filaNum = index + 2; // header is row 1
+    const filaNum = index + 2; // Row index in Excel (header is row 1)
+
+    // Check if the row is completely empty across all columns
+    const filledValues = Object.values(row).filter(
+      v => v !== null && v !== undefined && String(v).trim() !== ''
+    );
+    if (filledValues.length === 0) {
+      // Skip completely empty blank rows
+      return;
+    }
+
     const rawExp = row[expedienteCol];
     const rawDesc = row[descripcionCol];
     const rawResumen = resumenCol ? row[resumenCol] : '';
 
-    // Check completely empty row
-    const values = Object.values(row).filter(v => v !== null && v !== undefined && String(v).trim() !== '');
-    if (values.length === 0) {
-      // ignore completely empty row or mark as empty error
-      return;
-    }
-
-    const expStr = rawExp !== null && rawExp !== undefined ? String(rawExp).trim() : '';
+    let expStr = rawExp !== null && rawExp !== undefined ? String(rawExp).trim() : '';
     const descStr = rawDesc !== null && rawDesc !== undefined ? String(rawDesc).trim() : '';
     const resumenStr = rawResumen !== null && rawResumen !== undefined ? String(rawResumen).trim() : '';
 
-    // Error 1: Missing Expediente ID
+    // If NO_SS / expediente is empty, preserve row by assigning placeholder
     if (!expStr) {
       filasSinExpediente++;
-      registrosConError.push({
-        fila: filaNum,
-        error: 'El expediente o radicado está vacío',
-        datosBrutos: row
-      });
-      return;
+      expStr = `EXP_SIN_NO_SS_${filaNum}`;
     }
 
-    // Error 2: Duplicate Expediente
+    // Check duplicate count for diagnostics without discarding
     if (seenExpedientes.has(expStr)) {
       filasDuplicadas++;
-      registrosConError.push({
-        fila: filaNum,
-        numero_expediente: expStr,
-        error: `Número de expediente duplicado: "${expStr}"`,
-        datosBrutos: row
-      });
-      return;
+      seenExpedientes.set(expStr, seenExpedientes.get(expStr)! + 1);
+    } else {
+      seenExpedientes.set(expStr, 1);
     }
 
-    // Error 3: Empty or missing description
-    if (!descStr) {
+    // Flag empty description for diagnostics (record is NOT dropped, will go to REVISIÓN HUMANA)
+    if (!descStr || descStr.toLowerCase() === 'descripcion') {
       filasSinDescripcion++;
-      registrosConError.push({
-        fila: filaNum,
-        numero_expediente: expStr,
-        error: 'La descripción de la radicación está vacía',
-        datosBrutos: row
-      });
-      return;
     }
 
-    // Error 4: Description too short (< 10 chars)
-    if (descStr.length < 10) {
-      registrosConError.push({
-        fila: filaNum,
-        numero_expediente: expStr,
-        error: `Descripción demasiado corta (${descStr.length} caracteres), requiere al menos 10`,
-        datosBrutos: row
-      });
-      return;
-    }
-
-    // Extract additional columns to preserve
+    // Preserve all original columns intact (including NO_SS, SUBMOTIVO, NOMBRE_PRODUCTO, FECHA_RADICACION, FECHA_DE_COMPROMISO)
     const columnasAdicionales: Record<string, any> = {};
     for (const [key, val] of Object.entries(row)) {
-      if (key !== expedienteCol && key !== resumenCol && key !== descripcionCol) {
-        columnasAdicionales[key] = val;
-      }
+      columnasAdicionales[key] = val;
     }
-
-    seenExpedientes.add(expStr);
 
     const descNormalizada = normalizeText(descStr);
 
+    // Each Excel row generates exactly ONE PQRSRecord
     registrosValidos.push({
-      id: `pqrs_${index + 1}_${Date.now()}`,
+      id: `pqrs_${filaNum}_${Date.now()}_${index}`,
       numero_expediente: expStr,
       resumen_original: resumenStr,
       descripcion_original: descStr,
       descripcion_normalizada: descNormalizada,
       fecha_carga: new Date().toISOString(),
       archivo_origen: archivoNombre,
-      hash_descripcion: hashText(descNormalizada),
+      hash_descripcion: hashText(descNormalizada || `empty_${filaNum}`),
       columnas_adicionales: columnasAdicionales,
       estado_procesamiento: 'PENDIENTE'
     });
