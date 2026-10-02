@@ -40,6 +40,10 @@ export interface PQRSAnalysis {
   numero_expediente: string;
   // Core user-requested fields
   categoria: CategoriaPQR16 | string;
+  categoria_principal?: string;
+  subcategoria: string;
+  resumen_requerimiento?: string;
+  intencion_cliente?: string;
   confianza: number; // 0 to 100
   requiere_revision_humana: boolean | 'SI' | 'NO';
   producto?: string;
@@ -57,7 +61,6 @@ export interface PQRSAnalysis {
   subtema: string;
   problema_principal: string;
   solicitud_cliente: string;
-  subcategoria: string;
   resumen_normalizado: string;
   justificacion: string;
   nivel_confianza: 'Alta' | 'Media' | 'Baja';

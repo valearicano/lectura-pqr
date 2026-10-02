@@ -261,13 +261,11 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
             <table className="w-full text-left text-xs text-slate-600">
               <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-3.5">Expediente</th>
-                  <th className="py-3 px-3.5">Categoría Oficial (16)</th>
-                  <th className="py-3 px-3.5">Tipo PQR</th>
-                  <th className="py-3 px-3.5">Producto</th>
-                  <th className="py-3 px-3.5">Descripción Detallada (Fuente Principal)</th>
+                  <th className="py-3 px-3.5">Expediente (NO_SS)</th>
+                  <th className="py-3 px-3.5">Categoría Principal</th>
+                  <th className="py-3 px-3.5">Subcategoría</th>
+                  <th className="py-3 px-3.5">Resumen Requerimiento (Máx 20 Palabras)</th>
                   <th className="py-3 px-3.5 text-center">Confianza</th>
-                  <th className="py-3 px-3.5 text-center">Inconsistencia</th>
                   <th className="py-3 px-3.5 text-center">Revisión Humana</th>
                   <th className="py-3 px-3.5 text-right">Detalle</th>
                 </tr>
@@ -275,15 +273,10 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
               <tbody className="divide-y divide-slate-100">
                 {paginated.map(r => {
                   const a = r.analisis;
-                  const tipoPqr = a?.tipo_pqr || (a?.categoria === 'DATOS / INFORMACIÓN' ? 'PETICIÓN' : 'RECLAMO');
-                  const isInconsistent = a?.existe_inconsistencia === 'SI' || a?.posible_inconsistencia;
-                  const needsReview = a?.requiere_revision_humana === 'SI' || a?.requiere_revision;
-
-                  const tipoColor = 
-                    tipoPqr === 'PETICIÓN' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                    tipoPqr === 'QUEJA' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                    tipoPqr === 'SOLICITUD' ? 'bg-teal-50 text-teal-700 border-teal-200' :
-                    'bg-rose-50 text-rose-700 border-rose-200';
+                  const catPrincipal = a?.categoria_principal || a?.categoria || 'Sin procesar';
+                  const subcat = a?.subcategoria || 'General';
+                  const resumenReq = a?.resumen_requerimiento || a?.resumen_normalizado || r.descripcion_original.slice(0, 100);
+                  const needsReview = a?.requiere_revision_humana === 'SI' || a?.requiere_revision || catPrincipal === 'REVISIÓN HUMANA';
 
                   return (
                     <tr 
@@ -296,26 +289,25 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                       </td>
                       <td className="py-3 px-3.5 whitespace-nowrap">
                         <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-blue-50 text-blue-900 border border-blue-200 inline-block">
-                          {a?.categoria || 'Sin procesar'}
+                          {catPrincipal}
                         </span>
                       </td>
                       <td className="py-3 px-3.5 whitespace-nowrap">
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${tipoColor}`}>
-                          {tipoPqr}
+                        <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-800 border border-slate-200 inline-block">
+                          {subcat}
                         </span>
                       </td>
-                      <td className="py-3 px-3.5 text-slate-800 font-medium whitespace-nowrap">
-                        {a?.producto || r.columnas_adicionales?.NOMBRE_PRODUCTO || '-'}
-                      </td>
-                      <td className="py-3 px-3.5 text-slate-800 max-w-sm truncate" title={r.descripcion_original}>
-                        {r.descripcion_original}
+                      <td className="py-3 px-3.5 text-slate-800 max-w-md">
+                        <p className="font-medium text-slate-900 truncate" title={resumenReq}>
+                          {resumenReq}
+                        </p>
                       </td>
                       <td className="py-3 px-3.5 text-center whitespace-nowrap">
                         {a ? (
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
-                            a.nivel_confianza === 'Alta' 
+                            a.nivel_confianza === 'Alta' || a.confianza >= 85
                               ? 'bg-emerald-100 text-emerald-800' 
-                              : a.nivel_confianza === 'Media' 
+                              : a.nivel_confianza === 'Media' || a.confianza >= 70
                               ? 'bg-amber-100 text-amber-800' 
                               : 'bg-rose-100 text-rose-800'
                           }`}>
@@ -324,31 +316,24 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                         ) : '-'}
                       </td>
                       <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                        {isInconsistent ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-semibold text-[11px]">
-                            <ShieldAlert className="w-3 h-3 mr-1" />
-                            SÍ
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 text-[11px]">NO</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3.5 text-center whitespace-nowrap">
                         {needsReview ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold text-[11px]">
                             SÍ
                           </span>
                         ) : (
-                          <span className="text-emerald-700 font-medium text-[11px]">NO</span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold text-[11px]">
+                            NO
+                          </span>
                         )}
                       </td>
-                      <td className="py-3 px-3.5 text-right">
+                      <td className="py-3 px-3.5 text-right whitespace-nowrap">
                         <button 
                           onClick={(e) => { e.stopPropagation(); setActiveRecord(r); }}
-                          className="text-blue-600 hover:text-blue-800 p-1"
+                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md font-semibold text-[11px] inline-flex items-center"
                           title="Ver ficha completa"
                         >
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-3.5 h-3.5 mr-1" />
+                          Ver ficha
                         </button>
                       </td>
                     </tr>
@@ -463,16 +448,19 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                   </span>
                 </div>
 
-                {/* Official 16-Category Classification Card */}
+                {/* Official Intent Classification Card */}
                 <div className="p-4 bg-gradient-to-r from-blue-900 to-indigo-900 rounded-xl text-white shadow-md space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                       <span className="text-[10px] uppercase font-bold tracking-wider text-blue-200">
-                        Categoría General Asignada (1 de 16 Oficiales)
+                        Gran Tema &bull; Categoría Principal
                       </span>
-                      <h5 className="text-lg font-black text-white tracking-wide">
-                        {activeRecord.analisis.categoria}
+                      <h5 className="text-xl font-black text-white tracking-wide">
+                        {activeRecord.analisis.categoria_principal || activeRecord.analisis.categoria}
                       </h5>
+                      <span className="inline-block mt-1 px-2.5 py-0.5 rounded-md text-xs font-bold bg-white/20 text-white">
+                        Subcategoría: {activeRecord.analisis.subcategoria}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="px-3 py-1 bg-white/15 border border-white/20 rounded-lg text-xs font-bold text-white">
@@ -488,15 +476,27 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                     </div>
                   </div>
 
+                  {/* Resumen del Requerimiento (Máximo 20 palabras) */}
+                  <div className="p-3 bg-white/10 rounded-lg border border-white/15 text-xs text-white">
+                    <span className="text-[10px] uppercase font-bold text-blue-200 block mb-0.5">
+                      Resumen del Requerimiento (Máx 20 palabras):
+                    </span>
+                    <p className="font-semibold text-sm text-emerald-200">
+                      "{activeRecord.analisis.resumen_requerimiento || activeRecord.analisis.resumen_normalizado}"
+                    </p>
+                  </div>
+
                   {/* Formato JSON Oficial */}
                   <div className="bg-slate-950/80 rounded-lg p-3 border border-white/10 font-mono text-xs text-blue-200">
                     <span className="text-[10px] text-slate-400 block mb-1 font-sans font-semibold">
-                      FORMATO DE SALIDA EXACTO (JSON):
+                      FORMATO DE SALIDA ESTRUCTURADO (JSON):
                     </span>
                     <pre className="text-emerald-300 overflow-x-auto text-[11px] leading-tight">
 {JSON.stringify({
   expediente: activeRecord.numero_expediente,
-  categoria: activeRecord.analisis.categoria,
+  categoria_principal: activeRecord.analisis.categoria_principal || activeRecord.analisis.categoria,
+  subcategoria: activeRecord.analisis.subcategoria,
+  resumen_requerimiento: activeRecord.analisis.resumen_requerimiento || activeRecord.analisis.resumen_normalizado,
   confianza: activeRecord.analisis.confianza,
   requiere_revision_humana: Boolean(activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision)
 }, null, 2)}
@@ -509,7 +509,7 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                   <div className="p-2.5 rounded-lg bg-white border border-slate-200">
                     <span className="text-slate-500 block font-medium text-[11px]">Tipo de PQR:</span>
                     <span className="font-bold text-blue-900 text-sm">
-                      {activeRecord.analisis.tipo_pqr || (activeRecord.analisis.categoria === 'DATOS / INFORMACIÓN' ? 'PETICIÓN' : 'RECLAMO')}
+                      {activeRecord.analisis.tipo_pqr || (activeRecord.analisis.categoria === 'DATOS Y CERTIFICACIONES' ? 'PETICIÓN' : 'RECLAMO')}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-white border border-slate-200">
@@ -519,15 +519,15 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-white border border-slate-200">
-                    <span className="text-slate-500 block font-medium text-[11px]">Categoría Oficial:</span>
+                    <span className="text-slate-500 block font-medium text-[11px]">Gran Tema:</span>
                     <span className="font-bold text-slate-900 truncate block">
-                      {activeRecord.analisis.categoria}
+                      {activeRecord.analisis.categoria_principal || activeRecord.analisis.categoria}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-white border border-slate-200">
-                    <span className="text-slate-500 block font-medium text-[11px]">Submotivo / Ref:</span>
+                    <span className="text-slate-500 block font-medium text-[11px]">Subcategoría:</span>
                     <span className="font-semibold text-slate-800 truncate block">
-                      {activeRecord.analisis.submotivo || activeRecord.analisis.subcategoria || activeRecord.analisis.categoria}
+                      {activeRecord.analisis.subcategoria}
                     </span>
                   </div>
                 </div>

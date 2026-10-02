@@ -1,12 +1,14 @@
 import { GoogleGenAI, Type } from '@google/genai';
-import { PQRSAnalysis, CATEGORIAS_MAESTRAS_16, CategoriaPQR16 } from '../src/types';
+import { PQRSAnalysis } from '../src/types';
 import { hashText } from '../src/services/textNormalizer';
 import { 
   classifyPQRDeterministic, 
   buildPQRSAnalysis, 
-  normalizeCategoria,
+  consolidateBatchClassifications,
+  normalizeCategoryName,
   PQRInputRecord 
 } from '../src/services/classifierEngine';
+import { getCatalogSummary } from '../src/services/catalog';
 
 let aiInstance: GoogleGenAI | null = null;
 
@@ -63,127 +65,106 @@ export async function analyzePQRSBatch(
   });
 
   if (recordsToAnalyze.length === 0) {
-    return results;
+    return consolidateBatchClassifications(results);
   }
 
   // Format cases for Gemini showing DESC_DETALLADA as primary source
   const formattedCases = recordsToAnalyze.map(r => ({
     expediente: String(r.numero_expediente),
     DESC_DETALLADA: String(r.descripcion_original || ''),
-    SUBMOTIVO: String(r.submotivo_original || r.resumen_original || 'No provisto'),
-    NOMBRE_PRODUCTO: String(r.producto_original || 'No provisto')
+    SUBMOTIVO_CONTEXTO: String(r.submotivo_original || r.resumen_original || 'No provisto'),
+    NOMBRE_PRODUCTO_CONTEXTO: String(r.producto_original || 'No provisto')
   }));
 
   const prompt = `
-Quiero que actúes como un CLASIFICADOR DE PQR.
+Quiero que actúes como un CLASIFICADOR INTELIGENTE DE PQR/PQRS BANCARIO.
 
-Tu objetivo NO es explicar ampliamente cada caso.
-Tu objetivo principal es LEER "DESC_DETALLADA" y asignar cada PQR a UNA SOLA CATEGORÍA MAESTRA.
+OBJETIVO:
+1. Leer principalmente "DESC_DETALLADA" como fuente de verdad primordial.
+2. Interpretar la INTENCIÓN REAL del cliente (no te quedes únicamente en palabras clave literales).
+3. Identificar el gran tema (CATEGORÍA PRINCIPAL).
+4. Asignar la SUBCATEGORÍA correspondiente.
+5. Redactar un RESUMEN DEL REQUERIMIENTO de MÁXIMO 20 PALABRAS (conciso, claro y directo).
+6. Asignar nivel de CONFIANZA (0 a 100).
+7. Determinar si realmente requiere REVISIÓN HUMANA (true ÚNICAMENTE si la descripción está vacía, es puro ruido o carece de información).
+   PROHIBIDO enviar casos a "REVISIÓN HUMANA" por precaución o complejidad si el tema es identificable.
+   PROHIBIDO utilizar "OTRAS" como comodín de descarte.
 
-La clasificación debe ser simple, consistente y agrupada.
-NO CREES CATEGORÍAS NUEVAS.
-NO CREES SUBCATEGORÍAS.
+PRINCIPIO FUNDAMENTAL:
+"AGRUPA POR INTENCIÓN, NO POR PALABRAS".
+Ejemplo:
+"Me cobraron cuota de manejo", "Solicito devolución de cuota de manejo", "No estoy de acuerdo con la cuota mensual" o "Quiero que me reversen el cobro de la cuenta"
+-> Todos tienen la misma intención temática:
+CATEGORÍA PRINCIPAL: COMISIONES Y COBROS
+SUBCATEGORÍA: CUOTA DE MANEJO
+(NO inventar subcategorías dispersas como "Cobro cuota", "Reversión cuota", etc.).
 
-UTILIZA ÚNICAMENTE ESTAS 16 CATEGORÍAS MAESTRAS:
-1. CUOTA DE MANEJO
-2. PSE
-3. SEGUROS
-4. GMF / 4X1000
-5. FRAUDE / NO RECONOCIDO
-6. PROBLEMAS TRANSACCIONES
-7. PAGOS / ABONOS
-8. TARJETAS
-9. CRÉDITOS / CARTERA
-10. CUENTAS
-11. TRANSFERENCIAS
-12. COBROS / CARGOS
-13. DATOS / INFORMACIÓN
-14. SERVICIO / ATENCIÓN
-15. OTRAS
-16. REVISIÓN HUMANA
+CATÁLOGO BASE HOMOGÉNEO:
+- CDT:
+  * CDT - VISUALIZACIÓN (no aparece, no visualizo en app, desapareció)
+  * CDT - RENDIMIENTOS (pago de rendimientos, liquidación de intereses, diferencias)
+  * CDT - PAGO / CANCELACIÓN (redención, vencimiento, cancelación, desembolso)
+  * CDT - CERTIFICADOS Y SOPORTES (certificados Deceval, titularidad, tributarios)
 
-==================================================
-REGLAS DE CLASIFICACIÓN Y JERARQUÍA DE PRIORIDAD
-==================================================
+- PRODUCTOS:
+  * CANCELACIÓN DE PRODUCTOS (cancelación de cuentas, tarjetas, créditos, leasing, etc.)
+  * CONDICIONES DEL PRODUCTO (tasas, beneficios, restricciones, cambios en condiciones)
+  * ACTIVACIÓN DE PRODUCTOS (activación de cuenta, tarjeta, token, habilitación de uso)
 
-Cuando existan varias palabras o conceptos en una misma descripción, aplicar ESTRICTAMENTE esta prioridad:
+- GMF / 4X1000:
+  * COBRO (reclamo por cobro del gravamen)
+  * MARCACIÓN (solicitud de marcación como cuenta exenta)
+  * DESMARCACIÓN (solicitud de desmarcación o retiro de beneficio)
+  * DEVOLUCIÓN (solicitud de reintegro de GMF cobrado)
 
-1. FRAUDE / NO RECONOCIDO:
-Si el cliente indica que NO reconoce una compra, débito, retiro, transferencia o transacción, clasificar como FRAUDE / NO RECONOCIDO.
-Palabras clave: no reconozco, no reconoce, no autorizado, no autoricé, fraude, transacción fraudulenta, compra que no hice, débito que no hice, retiro que no hice, movimiento desconocido, inusual, desconocido, clonación, suplantación.
+- TRANSACCIONES:
+  * TRANSFERENCIAS (transferencias rechazadas, retenidas, no recibidas, ACH, Bre-B)
+  * ACLARACIÓN DE TRANSACCIONES (explicación de movimientos, notas débito/crédito)
+  * SALDOS Y MOVIMIENTOS (saldo incorrecto, dinero no reflejado, diferencias)
 
-2. PSE (REGLA CRÍTICA):
-PSE debe ser una categoría MAESTRA.
-Si "DESC_DETALLADA" contiene "PSE" o claramente hace referencia a una operación PSE, clasificar como: PSE.
-NO crear subcategorías. Todo esto queda en PSE: error PSE, pago PSE, compra PSE, PSE rechazado, no puede usar PSE, no funciona, bloqueado, transacción PSE, soporte PSE, devolución PSE, problema PSE, error 00001 de PSE.
+- CANALES DIGITALES:
+  * BANCA MÓVIL Y VIRTUAL (ingreso, usuario, contraseña, token, OTP, bloqueos)
+  * FALLAS TECNOLÓGICAS (errores en pantalla, caídas de sistema, pantallas en blanco)
 
-3. CUOTA DE MANEJO:
-Todo lo relacionado con cuota de manejo debe clasificarse como: CUOTA DE MANEJO.
-No importa si el cliente reclama un cobro, solicita reversión, solicita devolución, pregunta por qué se cobró, manifiesta inconformidad, pide eliminar la cuota, o solicita aclaración.
+- PAGOS:
+  * DÉBITOS AUTOMÁTICOS (inscripción, cancelación, no aplicado, duplicado)
+  * PAGOS Y RECAUDOS (servicios públicos, convenios, abonos a obligaciones)
+  * PSE (operaciones, compras, soporte o errores en pasarela PSE)
 
-4. SEGUROS:
-Todo lo relacionado con seguros debe clasificarse como: SEGUROS.
-Incluye: cobro de seguro, póliza, seguro de vida, seguro de tarjeta, seguro asociado a crédito, cancelación de seguro, devolución de seguro, reclamación de seguro, activación/desactivación. No importa el tipo de seguro.
+- COMISIONES Y COBROS:
+  * CUOTA DE MANEJO (cobro, reclamación, exoneración o devolución de cuota de manejo)
+  * COMISIONES Y TARIFAS (comisiones operativas, tarifas varias)
+  * INTERESES (liquidación de intereses, mora no procedente)
 
-5. GMF / 4X1000:
-Todo lo relacionado con GMF, 4x1000 o marcación de cuentas debe clasificarse como: GMF / 4X1000.
-Incluye: cobro del 4x1000, devolución del 4x1000, marcación para exención, desmarcación, solicitud de exención, cobro GMF, impuesto GMF, marcación de cuenta, retiro de marcación, error en marcación.
+- TARJETAS:
+  * MILLAS Y PROGRAMAS DE LEALTAD (millas, puntos, beneficios, canjes)
+  * PLÁSTICO Y BLOQUEO (envío, entrega, plástico deteriorado, cupo)
 
-6. PAGOS / ABONOS:
-Todo lo relacionado con pagos, abonos o aplicación de dinero debe clasificarse como: PAGOS / ABONOS.
-Incluye: pago, abono, aplicación de pago, pago no aplicado, pago aplicado incorrectamente, pago pendiente, reversión de pago, devolución de pago, abono a crédito, dinero abonado, pago de obligación.
-IMPORTANTE: Si el caso habla específicamente de un PAGO o ABONO a un crédito, usar PAGOS / ABONOS y NO CRÉDITOS / CARTERA.
+- CRÉDITOS Y CARTERA:
+  * ESTADO DE OBLIGACIÓN / SALDOS (saldo pendiente, plan de pagos, liquidación)
+  * REFINANCIACIÓN Y ACUERDOS (acuerdos de pago, reestructuración)
 
-7. TRANSFERENCIAS:
-Todo lo relacionado con transferencias debe clasificarse como: TRANSFERENCIAS.
-Incluye transferencias enviadas, recibidas, rechazadas, pendientes o con problemas.
-EXCEPCIÓN: Si el cliente indica que la transferencia NO fue realizada por él o no la reconoce, clasificar: FRAUDE / NO RECONOCIDO.
+- SEGUROS:
+  * PÓLIZAS Y COBROS (cobro de seguro de vida, crédito, desempleo)
+  * CANCELACIÓN Y DEVOLUCIÓN (cancelación de seguro, devolución de primas)
 
-8. TARJETAS:
-Todo lo relacionado con tarjetas debe clasificarse como: TARJETAS.
-Incluye: tarjeta de crédito, tarjeta débito, entrega de tarjeta, envío de tarjeta, activación, bloqueo, desbloqueo, renovación, cupo, problemas de tarjeta.
+- FRAUDE Y SEGURIDAD:
+  * TRANSACCIONES NO RECONOCIDAS (compras, débitos, retiros o transferencias no autorizadas)
+  * SUPLANTACIÓN Y CLONACIÓN (suplantación de identidad, clonación de tarjeta)
 
-9. CRÉDITOS / CARTERA:
-Todo lo relacionado directamente con créditos u obligaciones debe clasificarse como: CRÉDITOS / CARTERA.
-Incluye: crédito, obligación, saldo de crédito, cuota de crédito, cartera, intereses, refinanciación, acuerdo de pago, estado de obligación.
+- DOCUMENTOS Y CERTIFICACIONES:
+  * CERTIFICADOS Y PAZ Y SALVO (paz y salvo, certificaciones bancarias o de deuda)
+  * EXTRACTOS Y DOCUMENTOS (copias de contratos, extractos históricos, pagarés)
 
-10. PROBLEMAS TRANSACCIONES:
-Todo problema general relacionado con una transacción debe clasificarse como: PROBLEMAS TRANSACCIONES.
-Cuando el cliente habla de una transacción, operación, movimiento, débito o cajero pero NO indica que sea fraude o no reconocida.
+- SERVICIO Y ATENCIÓN:
+  * ATENCIÓN ASESOR Y SUCURSAL (inconformidad con el trato o mala asesoría)
+  * TIEMPOS DE RESPUESTA (demoras injustificadas en atención o trámites)
 
-11. CUENTAS:
-Todo lo relacionado con una cuenta bancaria (ahorros, corriente, apertura, cancelación, bloqueo de cuenta) que no corresponda a otra categoría específica.
+- OTRAS:
+  * CASOS ATÍPICOS (estrictamente casos singulares que no encajen en ningún tema)
 
-12. COBROS / CARGOS:
-Usar esta categoría solamente cuando existe un cobro o cargo que NO corresponde claramente a: cuota de manejo, GMF, seguro, pago/abono, transacción no reconocida u otra categoría específica.
-
-13. DATOS / INFORMACIÓN:
-Usar cuando el cliente solicita información, certificados, paz y salvo, soportes, extractos, datos o documentos y no existe una categoría más específica.
-
-14. SERVICIO / ATENCIÓN:
-Usar cuando la PQR corresponde principalmente a problemas de atención, servicio, asesoría, oficina, canal de atención, bloqueo de clave/usuario o calidad del servicio.
-
-15. OTRAS:
-Usar solamente cuando el caso no corresponde claramente a ninguna de las categorías anteriores.
-
-16. REVISIÓN HUMANA (REGLA CRÍTICA ESTRICTA):
-Usar ÚNICAMENTE cuando:
-* "DESC_DETALLADA" está vacía o es nula;
-* Contiene solamente la palabra "Descripción";
-* No existe información suficiente para determinar la categoría (menos de 4 caracteres o texto sin sentido).
-PROHIBICIÓN:
-- NO utilizar REVISIÓN HUMANA simplemente porque el texto tiene errores ortográficos o modismos.
-- NO utilizar REVISIÓN HUMANA porque el caso sea complejo si existe una categoría clara.
-- NO utilizar REVISIÓN HUMANA como opción predeterminada o por precaución.
-
-UNA FILA = UNA SOLA CATEGORÍA MAESTRA.
-FORMATO DE SALIDA: Devuelve exclusivamente un array JSON donde cada elemento contiene:
-{
-  "expediente": string,
-  "categoria": string (una de las 16 categorías maestras exactas),
-  "confianza": number (entero de 0 a 100),
-  "requiere_revision_humana": boolean (true ÚNICAMENTE si categoria es REVISIÓN HUMANA)
-}
+- REVISIÓN HUMANA:
+  * INFORMACIÓN INSUFICIENTE (únicamente descripciones vacías o incomprensibles)
 
 CASOS A CLASIFICAR (JSON):
 ${JSON.stringify(formattedCases, null, 2)}
@@ -198,7 +179,7 @@ ${JSON.stringify(formattedCases, null, 2)}
 
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-          const response = await ai.models.generateContent({
+          const apiCall = ai.models.generateContent({
             model: modelName,
             contents: prompt,
             config: {
@@ -209,35 +190,24 @@ ${JSON.stringify(formattedCases, null, 2)}
                   type: Type.OBJECT,
                   properties: {
                     expediente: { type: Type.STRING },
-                    categoria: {
-                      type: Type.STRING,
-                      enum: [
-                        'CUOTA DE MANEJO',
-                        'PSE',
-                        'SEGUROS',
-                        'GMF / 4X1000',
-                        'FRAUDE / NO RECONOCIDO',
-                        'PROBLEMAS TRANSACCIONES',
-                        'PAGOS / ABONOS',
-                        'TARJETAS',
-                        'CRÉDITOS / CARTERA',
-                        'CUENTAS',
-                        'TRANSFERENCIAS',
-                        'COBROS / CARGOS',
-                        'DATOS / INFORMACIÓN',
-                        'SERVICIO / ATENCIÓN',
-                        'OTRAS',
-                        'REVISIÓN HUMANA'
-                      ]
-                    },
+                    categoria_principal: { type: Type.STRING },
+                    subcategoria: { type: Type.STRING },
+                    resumen_requerimiento: { type: Type.STRING, description: 'Máximo 20 palabras resumiendo la solicitud' },
+                    intencion_cliente: { type: Type.STRING, description: 'Intención real interpretada del cliente' },
                     confianza: { type: Type.INTEGER, description: 'Nivel de confianza de 0 a 100' },
                     requiere_revision_humana: { type: Type.BOOLEAN }
                   },
-                  required: ['expediente', 'categoria', 'confianza', 'requiere_revision_humana']
+                  required: ['expediente', 'categoria_principal', 'subcategoria', 'resumen_requerimiento', 'confianza', 'requiere_revision_humana']
                 }
               }
             }
           });
+
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout de respuesta Gemini (7s)')), 7000)
+          );
+
+          const response: any = await Promise.race([apiCall, timeoutPromise]);
 
           const parsedText = response.text ? response.text.trim() : '[]';
           parsedArray = JSON.parse(parsedText);
@@ -247,7 +217,7 @@ ${JSON.stringify(formattedCases, null, 2)}
         } catch (err: any) {
           console.warn(`[Gemini API] Intento ${attempt} con ${modelName} falló:`, err.message || err);
           if (attempt < 2) {
-            await new Promise(res => setTimeout(res, 800));
+            await new Promise(res => setTimeout(res, 500));
           }
         }
       }
@@ -260,17 +230,22 @@ ${JSON.stringify(formattedCases, null, 2)}
       const originalIdx = pendingIndices[idx];
       const aiData = parsedArray!.find(p => String(p.expediente || p.numero_expediente) === String(rec.numero_expediente)) || parsedArray![idx];
 
-      const rawCat = aiData?.categoria || '';
-      const cat: CategoriaPQR16 = normalizeCategoria(rawCat);
-      const conf = typeof aiData?.confianza === 'number' ? Math.min(100, Math.max(0, aiData.confianza)) : 92;
-      const reqRev = cat === 'REVISIÓN HUMANA' || Boolean(aiData?.requiere_revision_humana);
+      const rawCatPrincipal = aiData?.categoria_principal || aiData?.categoria || '';
+      const rawSub = aiData?.subcategoria || '';
+      const normalized = normalizeCategoryName(`${rawCatPrincipal} ${rawSub}`);
+
+      const conf = typeof aiData?.confianza === 'number' ? Math.min(100, Math.max(0, aiData.confianza)) : 94;
+      const reqRev = normalized.categoria_principal === 'REVISIÓN HUMANA' || Boolean(aiData?.requiere_revision_humana);
 
       const analysis = buildPQRSAnalysis(rec, {
         expediente: rec.numero_expediente,
-        categoria: cat,
+        categoria_principal: normalized.categoria_principal,
+        subcategoria: normalized.subcategoria,
+        resumen_requerimiento: aiData?.resumen_requerimiento || `${normalized.categoria_principal}: ${rec.descripcion_original.slice(0, 90)}`,
+        intencion_cliente: aiData?.intencion_cliente || `Gestión de ${normalized.subcategoria}`,
         confianza: conf,
         requiere_revision_humana: reqRev,
-        motivo_de_revision: reqRev ? 'Requiere validación humana.' : undefined
+        motivo_de_revision: reqRev ? 'Requiere validación humana por información insuficiente.' : undefined
       });
 
       results[originalIdx] = analysis;
@@ -278,7 +253,7 @@ ${JSON.stringify(formattedCases, null, 2)}
       analysisCache.set(hash, analysis);
     });
 
-    return results;
+    return consolidateBatchClassifications(results);
   }
 
   // Fallback to high-accuracy deterministic classifier if API is unavailable or offline
@@ -291,7 +266,7 @@ ${JSON.stringify(formattedCases, null, 2)}
     analysisCache.set(hash, analysis);
   });
 
-  return results;
+  return consolidateBatchClassifications(results);
 }
 
 export async function getEmbedding(text: string): Promise<number[]> {

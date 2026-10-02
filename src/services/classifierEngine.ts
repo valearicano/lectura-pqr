@@ -1,4 +1,4 @@
-import { CategoriaPQR16, CATEGORIAS_OFICIALES_16, PQRSAnalysis } from '../types';
+import { PQRSAnalysis } from '../types';
 
 export interface PQRInputRecord {
   numero_expediente: string;
@@ -13,7 +13,10 @@ export interface PQRInputRecord {
 
 export interface PQRClassificationResult {
   expediente: string;
-  categoria: CategoriaPQR16;
+  categoria_principal: string;
+  subcategoria: string;
+  resumen_requerimiento: string; // Max 20 words
+  intencion_cliente: string;
   confianza: number;
   requiere_revision_humana: boolean;
   motivo_de_revision?: string;
@@ -22,75 +25,179 @@ export interface PQRClassificationResult {
 }
 
 /**
- * Normalizes category names to standard 16 master categories.
- * Maps synonyms like 'FRAUDE / TRANSACCIÓN NO RECONOCIDA' and 'TRANSACCIONES'.
+ * Trims a text to a maximum number of words.
  */
-export function normalizeCategoria(raw: string): CategoriaPQR16 {
-  if (!raw) return 'OTRAS';
-  const clean = raw.trim().toUpperCase();
-
-  if (clean.includes('FRAUDE') || clean.includes('NO RECONOCID') || clean.includes('NO RECONOCIDA')) {
-    return 'FRAUDE / NO RECONOCIDO';
-  }
-  if (clean === 'PSE' || clean.includes('PSE')) {
-    return 'PSE';
-  }
-  if (clean.includes('CUOTA DE MANEJO') || clean.includes('CUOTA MANEJO')) {
-    return 'CUOTA DE MANEJO';
-  }
-  if (clean.includes('SEGURO')) {
-    return 'SEGUROS';
-  }
-  if (clean.includes('GMF') || clean.includes('4X1000') || clean.includes('4*1000')) {
-    return 'GMF / 4X1000';
-  }
-  if (clean.includes('PAGO') || clean.includes('ABONO')) {
-    return 'PAGOS / ABONOS';
-  }
-  if (clean.includes('TRANSFERENCIA')) {
-    return 'TRANSFERENCIAS';
-  }
-  if (clean.includes('TARJETA')) {
-    return 'TARJETAS';
-  }
-  if (clean.includes('CRÉDITO') || clean.includes('CREDITO') || clean.includes('CARTERA')) {
-    return 'CRÉDITOS / CARTERA';
-  }
-  if (clean.includes('TRANSACCI') || clean.includes('PROBLEMAS TRANSACCIONES')) {
-    return 'PROBLEMAS TRANSACCIONES';
-  }
-  if (clean.includes('CUENTA')) {
-    return 'CUENTAS';
-  }
-  if (clean.includes('COBRO') || clean.includes('CARGO')) {
-    return 'COBROS / CARGOS';
-  }
-  if (clean.includes('DATO') || clean.includes('INFORMACI')) {
-    return 'DATOS / INFORMACIÓN';
-  }
-  if (clean.includes('SERVICIO') || clean.includes('ATENCI')) {
-    return 'SERVICIO / ATENCIÓN';
-  }
-  if (clean.includes('REVISI') || clean.includes('HUMANA')) {
-    return 'REVISIÓN HUMANA';
-  }
-  return 'OTRAS';
+function truncateWords(text: string, maxWords = 20): string {
+  const words = text.trim().split(/\s+/);
+  if (words.length <= maxWords) return text.trim();
+  return words.slice(0, maxWords).join(' ') + '...';
 }
 
 /**
- * Deterministic classifier that strictly enforces the priority rules and the 16 Master Categories.
- * Fuente Principal: DESC_DETALLADA.
- * NO_SS se conserva intacto.
+ * Generates a clean 15-20 word summary of customer intent from description.
+ */
+function generateCompactSummary(desc: string, catPrincipal: string, subcat: string): string {
+  if (!desc || desc.trim().length === 0) {
+    return 'Sin descripción provista por el cliente.';
+  }
+
+  const clean = desc.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // If description is already short, use it directly
+  const words = clean.split(/\s+/);
+  if (words.length <= 18) {
+    return clean;
+  }
+
+  // Construct a direct, active intent statement
+  const prefix = `Cliente solicita gestión de ${subcat.toLowerCase()}: `;
+  const excerpt = clean.slice(0, 110).trim();
+  return truncateWords(`${prefix}${excerpt}`, 20);
+}
+
+/**
+ * Normalizes categories to the standard master catalog.
+ */
+export function normalizeCategoryName(raw: string): { categoria_principal: string; subcategoria: string } {
+  if (!raw) return { categoria_principal: 'OTRAS', subcategoria: 'CASOS ATÍPICOS' };
+  const clean = raw.trim().toUpperCase();
+
+  // CDT
+  if (clean.includes('CDT')) {
+    if (clean.includes('VISUALIZ') || clean.includes('APP') || clean.includes('DESAPARECI')) {
+      return { categoria_principal: 'CDT', subcategoria: 'CDT - VISUALIZACIÓN' };
+    }
+    if (clean.includes('RENDIMIENTO') || clean.includes('INTERES')) {
+      return { categoria_principal: 'CDT', subcategoria: 'CDT - RENDIMIENTOS' };
+    }
+    if (clean.includes('PAGO') || clean.includes('CANCEL') || clean.includes('REDENCION') || clean.includes('VENCIMIENTO')) {
+      return { categoria_principal: 'CDT', subcategoria: 'CDT - PAGO / CANCELACIÓN' };
+    }
+    if (clean.includes('CERTIFICADO') || clean.includes('SOPORTE') || clean.includes('DECEVAL')) {
+      return { categoria_principal: 'CDT', subcategoria: 'CDT - CERTIFICADOS Y SOPORTES' };
+    }
+    return { categoria_principal: 'CDT', subcategoria: 'CDT - RENDIMIENTOS' };
+  }
+
+  // GMF / 4X1000
+  if (clean.includes('GMF') || clean.includes('4X1000') || clean.includes('4*1000') || clean.includes('CUATRO POR MIL')) {
+    if (clean.includes('DESMARCA')) return { categoria_principal: 'GMF / 4X1000', subcategoria: 'DESMARCACIÓN' };
+    if (clean.includes('MARCA') || clean.includes('EXEN')) return { categoria_principal: 'GMF / 4X1000', subcategoria: 'MARCACIÓN' };
+    if (clean.includes('DEVOL') || clean.includes('REINTEGRO') || clean.includes('REVERSION')) return { categoria_principal: 'GMF / 4X1000', subcategoria: 'DEVOLUCIÓN' };
+    return { categoria_principal: 'GMF / 4X1000', subcategoria: 'COBRO' };
+  }
+
+  // CUOTA DE MANEJO -> COMISIONES Y COBROS
+  if (clean.includes('CUOTA DE MANEJO') || clean.includes('CUOTA MANEJO')) {
+    return { categoria_principal: 'COMISIONES Y COBROS', subcategoria: 'CUOTA DE MANEJO' };
+  }
+
+  // PSE -> PAGOS
+  if (clean === 'PSE' || clean.includes('PSE')) {
+    return { categoria_principal: 'PAGOS', subcategoria: 'PSE' };
+  }
+
+  // FRAUDE / NO RECONOCIDO -> FRAUDE Y SEGURIDAD
+  if (clean.includes('FRAUDE') || clean.includes('NO RECONOCID') || clean.includes('CLONAC') || clean.includes('SUPLANT')) {
+    if (clean.includes('SUPLANT') || clean.includes('CLONAC')) {
+      return { categoria_principal: 'FRAUDE Y SEGURIDAD', subcategoria: 'SUPLANTACIÓN Y CLONACIÓN' };
+    }
+    return { categoria_principal: 'FRAUDE Y SEGURIDAD', subcategoria: 'TRANSACCIONES NO RECONOCIDAS' };
+  }
+
+  // CANALES DIGITALES
+  if (clean.includes('CANAL') || clean.includes('APP') || clean.includes('PORTAL') || clean.includes('TOKEN') || clean.includes('CLAVE')) {
+    if (clean.includes('FALLA') || clean.includes('ERROR') || clean.includes('PANTALLA') || clean.includes('CAIDA')) {
+      return { categoria_principal: 'CANALES DIGITALES', subcategoria: 'FALLAS TECNOLÓGICAS' };
+    }
+    return { categoria_principal: 'CANALES DIGITALES', subcategoria: 'BANCA MÓVIL Y VIRTUAL' };
+  }
+
+  // PRODUCTOS
+  if (clean.includes('CANCEL') && (clean.includes('PRODUCT') || clean.includes('CUENTA') || clean.includes('TARJETA'))) {
+    return { categoria_principal: 'PRODUCTOS', subcategoria: 'CANCELACIÓN DE PRODUCTOS' };
+  }
+  if (clean.includes('ACTIVAC')) {
+    return { categoria_principal: 'PRODUCTOS', subcategoria: 'ACTIVACIÓN DE PRODUCTOS' };
+  }
+
+  // SEGUROS
+  if (clean.includes('SEGURO') || clean.includes('POLIZA')) {
+    if (clean.includes('CANCEL') || clean.includes('DEVOL') || clean.includes('DESIST')) {
+      return { categoria_principal: 'SEGUROS', subcategoria: 'CANCELACIÓN Y DEVOLUCIÓN' };
+    }
+    return { categoria_principal: 'SEGUROS', subcategoria: 'PÓLIZAS Y COBROS' };
+  }
+
+  // TARJETAS
+  if (clean.includes('MILLA') || clean.includes('PUNTO') || clean.includes('LEALTAD')) {
+    return { categoria_principal: 'TARJETAS', subcategoria: 'MILLAS Y PROGRAMAS DE LEALTAD' };
+  }
+  if (clean.includes('TARJETA') || clean.includes('PLASTICO')) {
+    return { categoria_principal: 'TARJETAS', subcategoria: 'PLÁSTICO Y BLOQUEO' };
+  }
+
+  // CRÉDITOS
+  if (clean.includes('CREDITO') || clean.includes('CARTERA') || clean.includes('PRESTAMO')) {
+    if (clean.includes('REFINANC') || clean.includes('ACUERDO') || clean.includes('ALIVIO')) {
+      return { categoria_principal: 'CRÉDITOS Y CARTERA', subcategoria: 'REFINANCIACIÓN Y ACUERDOS' };
+    }
+    return { categoria_principal: 'CRÉDITOS Y CARTERA', subcategoria: 'ESTADO DE OBLIGACIÓN / SALDOS' };
+  }
+
+  // PAGOS
+  if (clean.includes('DEBITO AUTOMATICO') || clean.includes('DOMICILIAC')) {
+    return { categoria_principal: 'PAGOS', subcategoria: 'DÉBITOS AUTOMÁTICOS' };
+  }
+  if (clean.includes('PAGO') || clean.includes('ABONO') || clean.includes('RECAUDO')) {
+    return { categoria_principal: 'PAGOS', subcategoria: 'PAGOS Y RECAUDOS' };
+  }
+
+  // TRANSACCIONES
+  if (clean.includes('TRANSFER')) {
+    return { categoria_principal: 'TRANSACCIONES', subcategoria: 'TRANSFERENCIAS' };
+  }
+  if (clean.includes('SALDO') || clean.includes('MOVIMIENTO')) {
+    return { categoria_principal: 'TRANSACCIONES', subcategoria: 'SALDOS Y MOVIMIENTOS' };
+  }
+  if (clean.includes('TRANSACCI')) {
+    return { categoria_principal: 'TRANSACCIONES', subcategoria: 'ACLARACIÓN DE TRANSACCIONES' };
+  }
+
+  // DOCUMENTOS
+  if (clean.includes('CERTIFICAD') || clean.includes('PAZ Y SALVO')) {
+    return { categoria_principal: 'DOCUMENTOS Y CERTIFICACIONES', subcategoria: 'CERTIFICADOS Y PAZ Y SALVO' };
+  }
+  if (clean.includes('EXTRACT') || clean.includes('DOCUMENT') || clean.includes('CONTRATO')) {
+    return { categoria_principal: 'DOCUMENTOS Y CERTIFICACIONES', subcategoria: 'EXTRACTOS Y DOCUMENTOS' };
+  }
+
+  // SERVICIO
+  if (clean.includes('SERVICIO') || clean.includes('ATENCION') || clean.includes('ASESOR') || clean.includes('SUCURSAL')) {
+    if (clean.includes('TIEMPO') || clean.includes('DEMORA')) {
+      return { categoria_principal: 'SERVICIO Y ATENCIÓN', subcategoria: 'TIEMPOS DE RESPUESTA' };
+    }
+    return { categoria_principal: 'SERVICIO Y ATENCIÓN', subcategoria: 'ATENCIÓN ASESOR Y SUCURSAL' };
+  }
+
+  // REVISIÓN HUMANA
+  if (clean.includes('REVISION HUMANA') || clean.includes('REVISIÓN HUMANA')) {
+    return { categoria_principal: 'REVISIÓN HUMANA', subcategoria: 'INFORMACIÓN INSUFICIENTE' };
+  }
+
+  return { categoria_principal: 'COMISIONES Y COBROS', subcategoria: 'COMISIONES Y TARIFAS' };
+}
+
+/**
+ * Evaluates real customer intent from DESC_DETALLADA, groups similar requests,
+ * and maps to the homogeneous master catalog without ad-hoc fragmentation.
  */
 export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificationResult {
   const expediente = String(record.numero_expediente || '').trim();
   const rawText = String(record.descripcion_original || '').trim();
-  const lower = rawText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // remove accents for robust matching
-
-  // Clean meaningless punctuation/spaces to test for empty or meaningless descriptions
+  const lower = rawText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const cleanAlpha = lower.replace(/[^a-z0-9]/g, '');
 
-  // 16. REVISIÓN HUMANA (ÚNICAMENTE si está vacía, solo dice "descripción", o texto insuficiente sin palabras clave)
+  // 1. REVISIÓN HUMANA: Estrictamente si la descripción está vacía o es solo un marcador de posición
   const isEssentiallyEmpty =
     cleanAlpha.length === 0 ||
     cleanAlpha === 'descripcion' ||
@@ -99,412 +206,427 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     cleanAlpha === 'na' ||
     cleanAlpha === 'null' ||
     cleanAlpha === 'none' ||
-    cleanAlpha === 'noaplica' ||
-    cleanAlpha === 'x';
+    cleanAlpha === 'noaplica';
 
   if (isEssentiallyEmpty) {
     return {
       expediente,
-      categoria: 'REVISIÓN HUMANA',
+      categoria_principal: 'REVISIÓN HUMANA',
+      subcategoria: 'INFORMACIÓN INSUFICIENTE',
+      resumen_requerimiento: 'Descripción ausente o insuficiente para clasificar.',
+      intencion_cliente: 'Sin información de solicitud',
       confianza: 30,
       requiere_revision_humana: true,
-      motivo_de_revision: 'DESC_DETALLADA está vacía o contiene únicamente un marcador de posición ("descripción").'
+      motivo_de_revision: 'DESC_DETALLADA está vacía o contiene solo marcadores sin contenido analizable.'
     };
   }
 
-  // ====================================================================
-  // REGLA DE PRIORIDAD ESTRICTA (1 AL 16)
-  // ====================================================================
+  // =========================================================================
+  // EVALUACIÓN DE INTENCIÓN REAL (AGRUPACIÓN HOMOGÉNEA POR INTENCIÓN)
+  // =========================================================================
 
-  // 1. FRAUDE / NO RECONOCIDO (Prioridad 1)
-  // Palabras o expresiones clave de transacciones no autorizadas o desconocidas
-  const hasFraude =
+  // A. INTENCIÓN: CDT
+  if (lower.includes('cdt') || lower.includes('certificado de deposito') || lower.includes('deceval')) {
+    let sub = 'CDT - RENDIMIENTOS';
+    let intencion = 'Consulta o reclamo sobre rendimientos de CDT';
+    if (lower.includes('no aparece') || lower.includes('no visualiz') || lower.includes('desapareci') || lower.includes('no encuentro') || lower.includes('app')) {
+      sub = 'CDT - VISUALIZACIÓN';
+      intencion = 'Problema para visualizar CDT en canales digitales';
+    } else if (lower.includes('pago') || lower.includes('cancel') || lower.includes('redenc') || lower.includes('vencim') || lower.includes('desembols')) {
+      sub = 'CDT - PAGO / CANCELACIÓN';
+      intencion = 'Redención o pago de CDT por vencimiento o cancelación';
+    } else if (lower.includes('certificad') || lower.includes('soporte') || lower.includes('tributari') || lower.includes('titularidad')) {
+      sub = 'CDT - CERTIFICADOS Y SOPORTES';
+      intencion = 'Solicitud de certificados y soportes de CDT';
+    }
+    return {
+      expediente,
+      categoria_principal: 'CDT',
+      subcategoria: sub,
+      resumen_requerimiento: generateCompactSummary(rawText, 'CDT', sub),
+      intencion_cliente: intencion,
+      confianza: 98,
+      requiere_revision_humana: false
+    };
+  }
+
+  // B. INTENCIÓN: FRAUDE / SEGURIDAD (Prioridad alta en reclamaciones)
+  const isFraud =
     lower.includes('no reconozco') ||
     lower.includes('no reconoce') ||
-    lower.includes('no reconoci') ||
     lower.includes('no autorice') ||
-    lower.includes('no autorizo') ||
+    lower.includes('no autoricé') ||
     lower.includes('no autorizada') ||
-    lower.includes('no autorizado') ||
     lower.includes('sin autorizacion') ||
-    lower.includes('sin mi consentimiento') ||
-    lower.includes('fraude') ||
-    lower.includes('fraudulenta') ||
-    lower.includes('fraudulento') ||
     lower.includes('compra que no hice') ||
     lower.includes('debito que no hice') ||
     lower.includes('retiro que no hice') ||
-    lower.includes('movimiento desconocido') ||
-    lower.includes('transaccion inusual') ||
-    lower.includes('operacion desconocida') ||
+    lower.includes('fraude') ||
+    lower.includes('fraudulenta') ||
     lower.includes('clonacion') ||
+    lower.includes('clonada') ||
     lower.includes('suplantacion') ||
-    lower.includes('hurto') ||
-    lower.includes('robo') ||
-    lower.includes('estafa');
+    lower.includes('movimiento desconocido') ||
+    lower.includes('operacion desconocida');
 
-  if (hasFraude) {
+  if (isFraud) {
+    const isImpersonation = lower.includes('suplantacion') || lower.includes('clonacion');
+    const sub = isImpersonation ? 'SUPLANTACIÓN Y CLONACIÓN' : 'TRANSACCIONES NO RECONOCIDAS';
     return {
       expediente,
-      categoria: 'FRAUDE / NO RECONOCIDO',
+      categoria_principal: 'FRAUDE Y SEGURIDAD',
+      subcategoria: sub,
+      resumen_requerimiento: generateCompactSummary(rawText, 'FRAUDE Y SEGURIDAD', sub),
+      intencion_cliente: 'Cliente reporta operaciones o débitos no realizados por él',
       confianza: 98,
       requiere_revision_humana: false
     };
   }
 
-  // 2. PSE (Prioridad 2)
-  // Regla Crítica: Si contiene PSE o hace referencia clara a PSE, SIEMPRE clasificar como PSE.
-  // Sin importar si habla de error, pago, compra, rechazo, devolucion, etc.
-  const hasPSE = /\bpse\b/i.test(lower) || lower.includes('pago seguro en linea') || lower.includes('pasarela pse');
-  if (hasPSE) {
+  // C. INTENCIÓN: GMF / 4X1000
+  if (lower.includes('4x1000') || lower.includes('4*1000') || lower.includes('cuatro por mil') || lower.includes('gmf') || (lower.includes('marcacion') && lower.includes('cuenta'))) {
+    let sub = 'COBRO';
+    let intencion = 'Inconformidad con cobro del gravamen 4x1000';
+    if (lower.includes('desmarca') || lower.includes('retirar marcacion') || lower.includes('quitar marcacion') || lower.includes('quitar la marcacion') || lower.includes('eliminar marcacion')) {
+      sub = 'DESMARCACIÓN';
+      intencion = 'Solicitud de desmarcación de cuenta';
+    } else if (lower.includes('marca') || lower.includes('exen') || lower.includes('solicito marcacion')) {
+      sub = 'MARCACIÓN';
+      intencion = 'Solicitud de marcación de cuenta como exenta';
+    } else if (lower.includes('devol') || lower.includes('reintegro') || lower.includes('reversion')) {
+      sub = 'DEVOLUCIÓN';
+      intencion = 'Solicitud de devolución de 4x1000 debitado';
+    }
     return {
       expediente,
-      categoria: 'PSE',
+      categoria_principal: 'GMF / 4X1000',
+      subcategoria: sub,
+      resumen_requerimiento: generateCompactSummary(rawText, 'GMF / 4X1000', sub),
+      intencion_cliente: intencion,
       confianza: 98,
       requiere_revision_humana: false
     };
   }
 
-  // 3. CUOTA DE MANEJO (Prioridad 3)
-  // Todo lo relacionado con cuota de manejo (cobro, reversión, reclamación, etc.)
-  const hasCuotaManejo =
+  // D. INTENCIÓN: CUOTA DE MANEJO -> COMISIONES Y COBROS
+  // Regla: "Agrupa por intención, no por palabras"
+  const isCuotaManejo =
     lower.includes('cuota de manejo') ||
     lower.includes('cuotas de manejo') ||
     lower.includes('cuota manejo') ||
     lower.includes('cobro de cuota') ||
-    lower.includes('cobro cuota') ||
-    lower.includes('exoneracion de cuota') ||
-    lower.includes('exonerar cuota') ||
-    (lower.includes('cuota') && lower.includes('manejo'));
+    lower.includes('cuota mensual') ||
+    (lower.includes('reversen el cobro') && lower.includes('cuenta'));
 
-  if (hasCuotaManejo) {
+  if (isCuotaManejo) {
     return {
       expediente,
-      categoria: 'CUOTA DE MANEJO',
+      categoria_principal: 'COMISIONES Y COBROS',
+      subcategoria: 'CUOTA DE MANEJO',
+      resumen_requerimiento: generateCompactSummary(rawText, 'COMISIONES Y COBROS', 'CUOTA DE MANEJO'),
+      intencion_cliente: 'Inconformidad o solicitud de devolución sobre cuota de manejo',
       confianza: 98,
       requiere_revision_humana: false
     };
   }
 
-  // 4. SEGUROS (Prioridad 4)
-  // Pólizas, seguro de vida, tarjeta, asociado a crédito, desempleo, cobro o cancelación
-  const hasSeguros =
-    lower.includes('seguro') ||
-    lower.includes('seguros') ||
-    lower.includes('poliza') ||
-    lower.includes('aseguradora') ||
-    lower.includes('cardif') ||
-    lower.includes('sura') ||
-    lower.includes('prima de seguro');
-
-  if (hasSeguros) {
+  // E. INTENCIÓN: CANCELACIÓN DE PRODUCTOS
+  if ((lower.includes('cancel') || lower.includes('cierre') || lower.includes('terminar contrato')) &&
+      (lower.includes('cuenta') || lower.includes('tarjeta') || lower.includes('credito') || lower.includes('leasing') || lower.includes('producto'))) {
     return {
       expediente,
-      categoria: 'SEGUROS',
-      confianza: 97,
-      requiere_revision_humana: false
-    };
-  }
-
-  // 5. GMF / 4X1000 (Prioridad 5)
-  // Gravamen, 4x1000, marcación o desmarcación de cuenta exenta
-  const hasGMF =
-    lower.includes('4x1000') ||
-    lower.includes('4*1000') ||
-    lower.includes('4 por 1000') ||
-    lower.includes('cuatro por mil') ||
-    lower.includes('gmf') ||
-    lower.includes('marcacion') ||
-    lower.includes('desmarcacion') ||
-    lower.includes('cuenta exenta') ||
-    lower.includes('exencion');
-
-  if (hasGMF) {
-    return {
-      expediente,
-      categoria: 'GMF / 4X1000',
-      confianza: 98,
-      requiere_revision_humana: false
-    };
-  }
-
-  // 6. PAGOS / ABONOS (Prioridad 6)
-  // Pagos, abonos, no reflejados, aplicación, reversiones, abonos a créditos
-  // Nota contractual: pagos/abonos a crédito deben ir AQUÍ y no a créditos/cartera
-  const hasPagosAbonos =
-    lower.includes('pago') ||
-    lower.includes('pagos') ||
-    lower.includes('abono') ||
-    lower.includes('abonos') ||
-    lower.includes('aplicacion de pago') ||
-    lower.includes('no aplicado') ||
-    lower.includes('pago no aplicado') ||
-    lower.includes('pago pendiente') ||
-    lower.includes('reversion de pago') ||
-    lower.includes('devolucion de pago') ||
-    lower.includes('abono a credito') ||
-    lower.includes('pago de obligacion') ||
-    lower.includes('consignacion') ||
-    lower.includes('consigne') ||
-    lower.includes('pague') ||
-    lower.includes('abone') ||
-    lower.includes('no se refleja el pago') ||
-    lower.includes('no se refleja el abono') ||
-    lower.includes('dinero abonado');
-
-  if (hasPagosAbonos) {
-    return {
-      expediente,
-      categoria: 'PAGOS / ABONOS',
+      categoria_principal: 'PRODUCTOS',
+      subcategoria: 'CANCELACIÓN DE PRODUCTOS',
+      resumen_requerimiento: generateCompactSummary(rawText, 'PRODUCTOS', 'CANCELACIÓN DE PRODUCTOS'),
+      intencion_cliente: 'Cliente desea cancelar o cerrar definitivamente un producto',
       confianza: 96,
       requiere_revision_humana: false
     };
   }
 
-  // 7. TRANSFERENCIAS (Prioridad 7)
-  // Transferencias enviadas, recibidas, retenidas, rechazadas
-  const hasTransferencias =
-    lower.includes('transferencia') ||
-    lower.includes('transferencias') ||
-    lower.includes('transferir') ||
-    lower.includes('transferi') ||
-    lower.includes('transfiri') ||
-    lower.includes('envio de dinero') ||
-    lower.includes('giro');
-
-  if (hasTransferencias) {
+  // F. INTENCIÓN: CONDICIONES O BENEFICIOS DEL PRODUCTO
+  if (lower.includes('tasa') || lower.includes('condicion') || lower.includes('beneficio') || lower.includes('cambio de condiciones') || lower.includes('migrada')) {
     return {
       expediente,
-      categoria: 'TRANSFERENCIAS',
-      confianza: 95,
-      requiere_revision_humana: false
-    };
-  }
-
-  // 8. TARJETAS (Prioridad 8)
-  // Tarjetas débito/crédito, entrega, activación, bloqueo, renovación, cupo
-  const hasTarjetas =
-    lower.includes('tarjeta') ||
-    lower.includes('tarjetas') ||
-    lower.includes('plastico') ||
-    lower.includes('entrega de tarjeta') ||
-    lower.includes('bloqueo de tarjeta') ||
-    lower.includes('desbloqueo de tarjeta') ||
-    lower.includes('activacion de tarjeta') ||
-    lower.includes('renovacion de tarjeta') ||
-    lower.includes('cupo de la tarjeta') ||
-    lower.includes('cupo');
-
-  if (hasTarjetas) {
-    return {
-      expediente,
-      categoria: 'TARJETAS',
-      confianza: 95,
-      requiere_revision_humana: false
-    };
-  }
-
-  // 9. CRÉDITOS / CARTERA (Prioridad 9)
-  // Crédito, cartera, intereses, refinanciación, estado de deuda, liquidación
-  const hasCreditos =
-    lower.includes('credito') ||
-    lower.includes('creditos') ||
-    lower.includes('obligacion') ||
-    lower.includes('obligaciones') ||
-    lower.includes('cartera') ||
-    lower.includes('intereses') ||
-    lower.includes('refinanciacion') ||
-    lower.includes('acuerdo de pago') ||
-    lower.includes('prestamo') ||
-    lower.includes('libranza') ||
-    lower.includes('hipotecario') ||
-    lower.includes('datacredito') ||
-    lower.includes('cifin') ||
-    lower.includes('centrales de riesgo');
-
-  if (hasCreditos) {
-    return {
-      expediente,
-      categoria: 'CRÉDITOS / CARTERA',
+      categoria_principal: 'PRODUCTOS',
+      subcategoria: 'CONDICIONES DEL PRODUCTO',
+      resumen_requerimiento: generateCompactSummary(rawText, 'PRODUCTOS', 'CONDICIONES DEL PRODUCTO'),
+      intencion_cliente: 'Aclaración de tasas, beneficios o condiciones contractuales',
       confianza: 94,
       requiere_revision_humana: false
     };
   }
 
-  // 10. PROBLEMAS TRANSACCIONES (Prioridad 10)
-  // Transacciones u operaciones no fraudulentas (cajero, débito sin dinero, etc.)
-  const hasTransacciones =
-    lower.includes('transaccion') ||
-    lower.includes('transacciones') ||
-    lower.includes('operacion') ||
-    lower.includes('operaciones') ||
-    lower.includes('movimiento') ||
-    lower.includes('movimientos') ||
-    lower.includes('debito') ||
-    lower.includes('cajero') ||
-    lower.includes('retiro');
-
-  if (hasTransacciones) {
+  // G. INTENCIÓN: ACTIVACIÓN DE PRODUCTOS
+  if (lower.includes('activar') || lower.includes('activacion') || lower.includes('habilitar uso') || lower.includes('habilitar para uso')) {
     return {
       expediente,
-      categoria: 'PROBLEMAS TRANSACCIONES',
+      categoria_principal: 'PRODUCTOS',
+      subcategoria: 'ACTIVACIÓN DE PRODUCTOS',
+      resumen_requerimiento: generateCompactSummary(rawText, 'PRODUCTOS', 'ACTIVACIÓN DE PRODUCTOS'),
+      intencion_cliente: 'Solicitud de activación o habilitación operativa del producto',
+      confianza: 95,
+      requiere_revision_humana: false
+    };
+  }
+
+  // H. INTENCIÓN: CANALES DIGITALES (App, Portal, Token, Errores técnicos)
+  if (lower.includes('app') || lower.includes('portal') || lower.includes('banca virtual') || lower.includes('token') || lower.includes('otp') || lower.includes('clave') || lower.includes('usuario')) {
+    const isTechGlitch = lower.includes('falla') || lower.includes('pantalla') || lower.includes('caida') || lower.includes('lentitud') || lower.includes('error');
+    const sub = isTechGlitch ? 'FALLAS TECNOLÓGICAS' : 'BANCA MÓVIL Y VIRTUAL';
+    return {
+      expediente,
+      categoria_principal: 'CANALES DIGITALES',
+      subcategoria: sub,
+      resumen_requerimiento: generateCompactSummary(rawText, 'CANALES DIGITALES', sub),
+      intencion_cliente: 'Dificultad de acceso o falla operativa en canal digital',
+      confianza: 95,
+      requiere_revision_humana: false
+    };
+  }
+
+  // I. INTENCIÓN: PSE -> PAGOS
+  if (/\bpse\b/i.test(lower) || lower.includes('pasarela pse')) {
+    return {
+      expediente,
+      categoria_principal: 'PAGOS',
+      subcategoria: 'PSE',
+      resumen_requerimiento: generateCompactSummary(rawText, 'PAGOS', 'PSE'),
+      intencion_cliente: 'Transacción, soporte o débito en pasarela PSE',
+      confianza: 98,
+      requiere_revision_humana: false
+    };
+  }
+
+  // J. INTENCIÓN: DÉBITOS AUTOMÁTICOS -> PAGOS
+  if (lower.includes('debito automatico') || lower.includes('debitos automaticos') || lower.includes('domiciliac')) {
+    return {
+      expediente,
+      categoria_principal: 'PAGOS',
+      subcategoria: 'DÉBITOS AUTOMÁTICOS',
+      resumen_requerimiento: generateCompactSummary(rawText, 'PAGOS', 'DÉBITOS AUTOMÁTICOS'),
+      intencion_cliente: 'Gestión o inconformidad con débito automático',
+      confianza: 96,
+      requiere_revision_humana: false
+    };
+  }
+
+  // K. INTENCIÓN: PAGOS Y RECAUDOS
+  if (lower.includes('pago') || lower.includes('abono') || lower.includes('consignacion') || lower.includes('recaudo') || lower.includes('factura')) {
+    return {
+      expediente,
+      categoria_principal: 'PAGOS',
+      subcategoria: 'PAGOS Y RECAUDOS',
+      resumen_requerimiento: generateCompactSummary(rawText, 'PAGOS', 'PAGOS Y RECAUDOS'),
+      intencion_cliente: 'Aplicación o validación de pago o abono realizado',
+      confianza: 95,
+      requiere_revision_humana: false
+    };
+  }
+
+  // L. INTENCIÓN: TRANSFERENCIAS -> TRANSACCIONES
+  if (lower.includes('transferencia') || lower.includes('transferir') || lower.includes('transferi') || lower.includes('ach') || lower.includes('bre-b') || lower.includes('giro')) {
+    return {
+      expediente,
+      categoria_principal: 'TRANSACCIONES',
+      subcategoria: 'TRANSFERENCIAS',
+      resumen_requerimiento: generateCompactSummary(rawText, 'TRANSACCIONES', 'TRANSFERENCIAS'),
+      intencion_cliente: 'Problema o retraso con transferencia de dinero',
+      confianza: 96,
+      requiere_revision_humana: false
+    };
+  }
+
+  // M. INTENCIÓN: ACLARACIÓN DE TRANSACCIONES -> TRANSACCIONES
+  if (lower.includes('aclaracion') || lower.includes('explicacion de movimiento') || lower.includes('nota debito') || lower.includes('nota credito') || lower.includes('cajero') || lower.includes('operacion no clara')) {
+    return {
+      expediente,
+      categoria_principal: 'TRANSACCIONES',
+      subcategoria: 'ACLARACIÓN DE TRANSACCIONES',
+      resumen_requerimiento: generateCompactSummary(rawText, 'TRANSACCIONES', 'ACLARACIÓN DE TRANSACCIONES'),
+      intencion_cliente: 'Solicitud de aclaración sobre operación transaccional',
+      confianza: 94,
+      requiere_revision_humana: false
+    };
+  }
+
+  // N. INTENCIÓN: SALDOS Y MOVIMIENTOS -> TRANSACCIONES
+  if (lower.includes('saldo') || lower.includes('movimiento') || lower.includes('diferencia') || lower.includes('no reflejado')) {
+    return {
+      expediente,
+      categoria_principal: 'TRANSACCIONES',
+      subcategoria: 'SALDOS Y MOVIMIENTOS',
+      resumen_requerimiento: generateCompactSummary(rawText, 'TRANSACCIONES', 'SALDOS Y MOVIMIENTOS'),
+      intencion_cliente: 'Revisión de saldos o inconsistencias en movimientos',
+      confianza: 94,
+      requiere_revision_humana: false
+    };
+  }
+
+  // O. INTENCIÓN: MILLAS Y BENEFICIOS -> TARJETAS
+  if (lower.includes('milla') || lower.includes('puntos') || lower.includes('canje') || lower.includes('lealtad') || lower.includes('lifemiles')) {
+    return {
+      expediente,
+      categoria_principal: 'TARJETAS',
+      subcategoria: 'MILLAS Y PROGRAMAS DE LEALTAD',
+      resumen_requerimiento: generateCompactSummary(rawText, 'TARJETAS', 'MILLAS Y PROGRAMAS DE LEALTAD'),
+      intencion_cliente: 'Gestión o reclamo sobre millas o puntos acumulados',
+      confianza: 96,
+      requiere_revision_humana: false
+    };
+  }
+
+  // P. INTENCIÓN: PLÁSTICO Y BLOQUEO -> TARJETAS
+  if (lower.includes('tarjeta') || lower.includes('plastico') || lower.includes('entrega de tarjeta') || lower.includes('bloqueo de tarjeta') || lower.includes('cupo')) {
+    return {
+      expediente,
+      categoria_principal: 'TARJETAS',
+      subcategoria: 'PLÁSTICO Y BLOQUEO',
+      resumen_requerimiento: generateCompactSummary(rawText, 'TARJETAS', 'PLÁSTICO Y BLOQUEO'),
+      intencion_cliente: 'Gestión operativa, entrega o cupo de tarjeta física',
+      confianza: 95,
+      requiere_revision_humana: false
+    };
+  }
+
+  // Q. INTENCIÓN: SEGUROS
+  if (lower.includes('seguro') || lower.includes('poliza') || lower.includes('aseguradora')) {
+    const isCancel = lower.includes('cancel') || lower.includes('devol') || lower.includes('desistir');
+    const sub = isCancel ? 'CANCELACIÓN Y DEVOLUCIÓN' : 'PÓLIZAS Y COBROS';
+    return {
+      expediente,
+      categoria_principal: 'SEGUROS',
+      subcategoria: sub,
+      resumen_requerimiento: generateCompactSummary(rawText, 'SEGUROS', sub),
+      intencion_cliente: 'Reclamación o trámite referente a pólizas de seguro',
+      confianza: 96,
+      requiere_revision_humana: false
+    };
+  }
+
+  // R. INTENCIÓN: CRÉDITOS Y CARTERA
+  if (lower.includes('credito') || lower.includes('cartera') || lower.includes('prestamo') || lower.includes('libranza') || lower.includes('hipotecario')) {
+    const isRefinance = lower.includes('refinanc') || lower.includes('acuerdo') || lower.includes('alivio') || lower.includes('reestructur');
+    const sub = isRefinance ? 'REFINANCIACIÓN Y ACUERDOS' : 'ESTADO DE OBLIGACIÓN / SALDOS';
+    return {
+      expediente,
+      categoria_principal: 'CRÉDITOS Y CARTERA',
+      subcategoria: sub,
+      resumen_requerimiento: generateCompactSummary(rawText, 'CRÉDITOS Y CARTERA', sub),
+      intencion_cliente: 'Consulta o gestión de obligación crediticia',
+      confianza: 94,
+      requiere_revision_humana: false
+    };
+  }
+
+  // S. INTENCIÓN: DOCUMENTOS Y CERTIFICACIONES
+  if (lower.includes('certificado') || lower.includes('paz y salvo') || lower.includes('extracto') || lower.includes('contrato') || lower.includes('pagare') || lower.includes('documento')) {
+    const isCert = lower.includes('certificado') || lower.includes('paz y salvo');
+    const sub = isCert ? 'CERTIFICADOS Y PAZ Y SALVO' : 'EXTRACTOS Y DOCUMENTOS';
+    return {
+      expediente,
+      categoria_principal: 'DOCUMENTOS Y CERTIFICACIONES',
+      subcategoria: sub,
+      resumen_requerimiento: generateCompactSummary(rawText, 'DOCUMENTOS Y CERTIFICACIONES', sub),
+      intencion_cliente: 'Solicitud de emisión o envío de documentos bancarios',
+      confianza: 95,
+      requiere_revision_humana: false
+    };
+  }
+
+  // T. INTENCIÓN: SERVICIO Y ATENCIÓN
+  if (lower.includes('atencion') || lower.includes('servicio') || lower.includes('asesor') || lower.includes('sucursal') || lower.includes('oficina') || lower.includes('mal trato') || lower.includes('tiempo de espera')) {
+    const isTime = lower.includes('tiempo') || lower.includes('demora') || lower.includes('plazo');
+    const sub = isTime ? 'TIEMPOS DE RESPUESTA' : 'ATENCIÓN ASESOR Y SUCURSAL';
+    return {
+      expediente,
+      categoria_principal: 'SERVICIO Y ATENCIÓN',
+      subcategoria: sub,
+      resumen_requerimiento: generateCompactSummary(rawText, 'SERVICIO Y ATENCIÓN', sub),
+      intencion_cliente: 'Inconformidad con la calidad del servicio o tiempos',
       confianza: 92,
       requiere_revision_humana: false
     };
   }
 
-  // 11. CUENTAS (Prioridad 11)
-  // Cuentas bancarias de ahorros o corriente
-  const hasCuentas =
-    lower.includes('cuenta') ||
-    lower.includes('cuentas') ||
-    lower.includes('apertura de cuenta') ||
-    lower.includes('cancelacion de cuenta') ||
-    lower.includes('bloqueo de cuenta');
-
-  if (hasCuentas) {
+  // U. COMISIONES Y TARIFAS GENERALES
+  if (lower.includes('cobro') || lower.includes('comision') || lower.includes('tarifa') || lower.includes('cargo')) {
     return {
       expediente,
-      categoria: 'CUENTAS',
-      confianza: 91,
-      requiere_revision_humana: false
-    };
-  }
-
-  // 12. COBROS / CARGOS (Prioridad 12)
-  // Comisiones, cobros o tarifas varias
-  const hasCobros =
-    lower.includes('cobro') ||
-    lower.includes('cobros') ||
-    lower.includes('cargo') ||
-    lower.includes('cargos') ||
-    lower.includes('comision') ||
-    lower.includes('comisiones') ||
-    lower.includes('tarifa') ||
-    lower.includes('descuento');
-
-  if (hasCobros) {
-    return {
-      expediente,
-      categoria: 'COBROS / CARGOS',
+      categoria_principal: 'COMISIONES Y COBROS',
+      subcategoria: 'COMISIONES Y TARIFAS',
+      resumen_requerimiento: generateCompactSummary(rawText, 'COMISIONES Y COBROS', 'COMISIONES Y TARIFAS'),
+      intencion_cliente: 'Aclaración o reclamo sobre cargos o comisiones',
       confianza: 90,
       requiere_revision_humana: false
     };
   }
 
-  // 13. DATOS / INFORMACIÓN (Prioridad 13)
-  // Certificados, extractos, paz y salvo, soportes, derecho de petición
-  const hasDatos =
-    lower.includes('certificado') ||
-    lower.includes('certificados') ||
-    lower.includes('soporte') ||
-    lower.includes('soportes') ||
-    lower.includes('paz y salvo') ||
-    lower.includes('extracto') ||
-    lower.includes('extractos') ||
-    lower.includes('documento') ||
-    lower.includes('documentos') ||
-    lower.includes('informacion') ||
-    lower.includes('datos') ||
-    lower.includes('derecho de peticion') ||
-    lower.includes('copia');
-
-  if (hasDatos) {
-    return {
-      expediente,
-      categoria: 'DATOS / INFORMACIÓN',
-      confianza: 93,
-      requiere_revision_humana: false
-    };
-  }
-
-  // 14. SERVICIO / ATENCIÓN (Prioridad 14)
-  // Asesoría, queja de trato, oficina, canal, portal web o app bloqueada
-  const hasServicio =
-    lower.includes('atencion') ||
-    lower.includes('servicio') ||
-    lower.includes('asesor') ||
-    lower.includes('asesora') ||
-    lower.includes('oficina') ||
-    lower.includes('canal') ||
-    lower.includes('calidad') ||
-    lower.includes('mal trato') ||
-    lower.includes('pesimo') ||
-    lower.includes('tiempo de espera') ||
-    lower.includes('bloqueo de usuario') ||
-    lower.includes('clave') ||
-    lower.includes('app') ||
-    lower.includes('portal web') ||
-    lower.includes('sucursal virtual');
-
-  if (hasServicio) {
-    return {
-      expediente,
-      categoria: 'SERVICIO / ATENCIÓN',
-      confianza: 91,
-      requiere_revision_humana: false
-    };
-  }
-
-  // 15. OTRAS (Prioridad 15)
-  // Texto con contenido legible pero sin temática bancaria específica identificable
+  // V. Caso residual con texto legítimo
   if (cleanAlpha.length >= 8) {
     return {
       expediente,
-      categoria: 'OTRAS',
+      categoria_principal: 'OTRAS',
+      subcategoria: 'CASOS ATÍPICOS',
+      resumen_requerimiento: generateCompactSummary(rawText, 'OTRAS', 'CASOS ATÍPICOS'),
+      intencion_cliente: 'Requerimiento bancario no encasillado en categorías estándar',
       confianza: 85,
       requiere_revision_humana: false
     };
   }
 
-  // 16. REVISIÓN HUMANA (Caso límite: texto residual incomprensible de menos de 8 letras)
   return {
     expediente,
-    categoria: 'REVISIÓN HUMANA',
+    categoria_principal: 'REVISIÓN HUMANA',
+    subcategoria: 'INFORMACIÓN INSUFICIENTE',
+    resumen_requerimiento: 'Texto insuficiente para determinar intención.',
+    intencion_cliente: 'Revisión manual requerida',
     confianza: 40,
     requiere_revision_humana: true,
-    motivo_de_revision: 'Texto de la descripción no contiene elementos suficientes para una clasificación confiable.'
+    motivo_de_revision: 'El caso contiene menos de 8 caracteres alfabéticos sin intención clara.'
   };
 }
 
 /**
- * Converts a classification result into the full PQRSAnalysis structure
- * used by all UI components without breaking backward compatibility.
+ * Builds the complete PQRSAnalysis object incorporating Categoría Principal,
+ * Subcategoría, and Resumen del Requerimiento (max 20 words).
  */
 export function buildPQRSAnalysis(
   record: PQRInputRecord,
   result: PQRClassificationResult
 ): PQRSAnalysis {
-  const cat = result.categoria;
+  const catPrincipal = result.categoria_principal;
+  const subcat = result.subcategoria;
   const conf = result.confianza;
   const reqRev = result.requiere_revision_humana;
 
-  // Detect inconsistency with submotivo/producto context if present
+  // Inconsistency check with original submotivo if present
   const submotivoOrig = (record.submotivo_original || record.resumen_original || '').toLowerCase();
   let existeInconsistencia: 'SI' | 'NO' = 'NO';
   let motivoInconsistencia: string | undefined = undefined;
 
   if (submotivoOrig) {
-    if (cat === 'FRAUDE / NO RECONOCIDO' && !submotivoOrig.includes('fraude') && !submotivoOrig.includes('no reconoc')) {
+    if (catPrincipal === 'FRAUDE Y SEGURIDAD' && !submotivoOrig.includes('fraude') && !submotivoOrig.includes('no reconoc')) {
       existeInconsistencia = 'SI';
-      motivoInconsistencia = `La descripción reporta una transacción no reconocida o fraude, pero el registro original indicaba "${record.submotivo_original || record.resumen_original}".`;
-    } else if (cat === 'PAGOS / ABONOS' && !submotivoOrig.includes('pago') && !submotivoOrig.includes('abono')) {
+      motivoInconsistencia = `La descripción reporta una transacción no reconocida o fraude, pero el registro original decía "${record.submotivo_original || record.resumen_original}".`;
+    } else if (subcat === 'CUOTA DE MANEJO' && !submotivoOrig.includes('cuota') && !submotivoOrig.includes('manejo')) {
       existeInconsistencia = 'SI';
-      motivoInconsistencia = `La descripción se enfoca en pagos o abonos no aplicados, mientras que el registro original rotulaba "${record.submotivo_original || record.resumen_original}".`;
-    } else if (cat === 'CUOTA DE MANEJO' && !submotivoOrig.includes('cuota') && !submotivoOrig.includes('manejo')) {
+      motivoInconsistencia = `La descripción reclama cobro de cuota de manejo, mientras que el registro original rotulaba "${record.submotivo_original || record.resumen_original}".`;
+    } else if (catPrincipal === 'GMF / 4X1000' && !submotivoOrig.includes('gmf') && !submotivoOrig.includes('4x1000')) {
       existeInconsistencia = 'SI';
-      motivoInconsistencia = `La descripción reclama cobro de cuota de manejo, mientras que el registro original indicaba "${record.submotivo_original || record.resumen_original}".`;
-    } else if (cat === 'PSE' && !submotivoOrig.includes('pse')) {
-      existeInconsistencia = 'SI';
-      motivoInconsistencia = `La descripción reporta una operación PSE, pero el registro original no lo contemplaba.`;
+      motivoInconsistencia = `La descripción trata sobre el gravamen GMF / 4x1000, no contemplado en el registro original.`;
     }
   }
 
-  const shortExcerpt = record.descripcion_original.slice(0, 160).replace(/[\r\n]+/g, ' ').trim();
+  const shortSummary = result.resumen_requerimiento || generateCompactSummary(record.descripcion_original, catPrincipal, subcat);
 
   return {
     numero_expediente: record.numero_expediente,
-    categoria: cat,
+    categoria: catPrincipal, // Homogeneous main theme
+    categoria_principal: catPrincipal,
+    subcategoria: subcat,
+    resumen_requerimiento: shortSummary,
+    intencion_cliente: result.intencion_cliente,
     confianza: conf,
     requiere_revision_humana: reqRev ? 'SI' : 'NO',
     requiere_revision: reqRev,
@@ -515,23 +637,65 @@ export function buildPQRSAnalysis(
 
     // Compact structured fields
     producto: record.producto_original || 'Identificado en descripción',
-    tipo_pqr: cat === 'DATOS / INFORMACIÓN' ? 'PETICIÓN' : cat === 'SERVICIO / ATENCIÓN' ? 'QUEJA' : 'RECLAMO',
-    motivo: cat,
-    submotivo: cat,
-    tema_principal: cat,
-    subtema: cat,
-    subcategoria: cat,
-    problema_principal: `Requerimiento clasificado en ${cat}.`,
-    solicitud_cliente: `Gestión solicitada sobre ${cat}.`,
-    que_solicita_exactamente: `Atención referente a ${cat}.`,
-    hechos_principales: shortExcerpt,
-    sustento_clasificacion: `Identificado en DESC_DETALLADA aplicando las reglas maestras de prioridad.`,
-    resumen_normalizado: `${cat}: ${shortExcerpt.slice(0, 90)}...`,
-    justificacion: `Asignado a la categoría maestra ${cat} según DESC_DETALLADA y jerarquía de prioridad.`,
+    tipo_pqr: catPrincipal === 'DOCUMENTOS Y CERTIFICACIONES' ? 'PETICIÓN' : catPrincipal === 'SERVICIO Y ATENCIÓN' ? 'QUEJA' : 'RECLAMO',
+    motivo: catPrincipal,
+    submotivo: subcat,
+    tema_principal: catPrincipal,
+    subtema: subcat,
+    problema_principal: shortSummary,
+    solicitud_cliente: result.intencion_cliente || shortSummary,
+    que_solicita_exactamente: shortSummary,
+    hechos_principales: record.descripcion_original.slice(0, 160).replace(/[\r\n]+/g, ' ').trim(),
+    sustento_clasificacion: `Identificado en DESC_DETALLADA por análisis de intención: ${subcat}.`,
+    resumen_normalizado: shortSummary,
+    justificacion: `Agrupado bajo ${catPrincipal} > ${subcat} con base en la intención del cliente.`,
     nivel_confianza: conf >= 85 ? 'Alta' : conf >= 70 ? 'Media' : 'Baja',
     modelo_ia: 'gemini-3.8-flash',
-    version_prompt: 'v3.1.0-16-categorias-maestras',
+    version_prompt: 'v3.2.0-intencion-homogenea',
     fecha_analisis: new Date().toISOString(),
     estado_revision: 'PENDIENTE'
   };
+}
+
+/**
+ * Global consolidation step (Objetivo 10):
+ * Audits the full list of classified records to merge fragmented subcategories,
+ * normalize synonymous terms, and eliminate unnecessary 'OTRAS' or 'REVISIÓN HUMANA'.
+ */
+export function consolidateBatchClassifications(analyses: PQRSAnalysis[]): PQRSAnalysis[] {
+  return analyses.map(item => {
+    const rawCat = item.categoria || item.categoria_principal || '';
+    const rawSub = item.subcategoria || '';
+
+    // If an item fell into OTRAS or REVISIÓN HUMANA, try intent recovery from facts/summary
+    if (rawCat === 'OTRAS' || (rawCat === 'REVISIÓN HUMANA' && item.hechos_principales && item.hechos_principales.length > 15)) {
+      const recovered = classifyPQRDeterministic({
+        numero_expediente: item.numero_expediente,
+        descripcion_original: item.hechos_principales || item.problema_principal
+      });
+      if (recovered.categoria_principal !== 'OTRAS' && recovered.categoria_principal !== 'REVISIÓN HUMANA') {
+        return buildPQRSAnalysis({
+          numero_expediente: item.numero_expediente,
+          descripcion_original: item.hechos_principales || item.problema_principal
+        }, recovered);
+      }
+    }
+
+    // Normalize any synonymous categories
+    const normalized = normalizeCategoryName(`${rawCat} ${rawSub}`);
+    if (normalized.categoria_principal !== rawCat || normalized.subcategoria !== rawSub) {
+      return {
+        ...item,
+        categoria: normalized.categoria_principal,
+        categoria_principal: normalized.categoria_principal,
+        subcategoria: normalized.subcategoria,
+        motivo: normalized.categoria_principal,
+        submotivo: normalized.subcategoria,
+        tema_principal: normalized.categoria_principal,
+        subtema: normalized.subcategoria
+      };
+    }
+
+    return item;
+  });
 }

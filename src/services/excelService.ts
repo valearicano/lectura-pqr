@@ -76,16 +76,25 @@ export function exportEnrichedExcel(
 
     // 2. Append standard AI master classification columns
     const a = r.analisis;
-    const cat = a?.categoria || 'Sin procesar';
+    const catPrincipal = a?.categoria_principal || a?.categoria || 'Sin procesar';
+    const subcat = a?.subcategoria || 'General';
+    const resumenReq = a?.resumen_requerimiento || a?.resumen_normalizado || '';
+    const intencion = a?.intencion_cliente || a?.solicitud_cliente || '';
     const conf = a?.confianza !== undefined ? a.confianza : 90;
-    const reqRev = a?.requiere_revision_humana === 'SI' || a?.requiere_revision || cat === 'REVISIÓN HUMANA' ? 'SI' : 'NO';
+    const reqRev = a?.requiere_revision_humana === 'SI' || a?.requiere_revision || catPrincipal === 'REVISIÓN HUMANA' ? 'SI' : 'NO';
 
-    row['CATEGORIA_MAESTRA'] = cat;
+    row['CATEGORIA_PRINCIPAL'] = catPrincipal;
+    row['SUBCATEGORIA'] = subcat;
+    row['RESUMEN_REQUERIMIENTO'] = resumenReq;
+    row['INTENCION_REAL_CLIENTE'] = intencion;
+    row['CATEGORIA_MAESTRA'] = catPrincipal;
     row['CONFIANZA'] = conf;
     row['REQUIERE_REVISION_HUMANA'] = reqRev;
     row['FORMATO_JSON_CORTO'] = JSON.stringify({
       expediente: r.numero_expediente,
-      categoria: cat,
+      categoria_principal: catPrincipal,
+      subcategoria: subcat,
+      resumen_requerimiento: resumenReq,
       confianza: conf,
       requiere_revision_humana: reqRev === 'SI'
     });
@@ -93,7 +102,7 @@ export function exportEnrichedExcel(
     // Complementary audit details
     row['MOTIVO_DE_REVISION'] = a?.motivo_de_revision || '';
     row['EXISTE_INCONSISTENCIA'] = a?.existe_inconsistencia === 'SI' || a?.posible_inconsistencia ? 'SI' : 'NO';
-    row['TIPO_PQR'] = a?.tipo_pqr || (cat === 'DATOS / INFORMACIÓN' ? 'PETICIÓN' : 'RECLAMO');
+    row['TIPO_PQR'] = a?.tipo_pqr || (catPrincipal === 'DOCUMENTOS Y CERTIFICACIONES' ? 'PETICIÓN' : 'RECLAMO');
     row['FECHA_ANALISIS'] = a?.fecha_analisis || new Date().toISOString().split('T')[0];
 
     return row;
