@@ -15,12 +15,7 @@ let aiInstance: GoogleGenAI | null = null;
 function getAiClient(): GoogleGenAI {
   if (!aiInstance) {
     aiInstance = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY || '',
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
+      apiKey: process.env.GEMINI_API_KEY || ''
     });
   }
   return aiInstance;
@@ -49,7 +44,7 @@ export async function analyzePQRSBatch(
   const pendingIndices: number[] = [];
   const recordsToAnalyze: typeof records = [];
 
-  // 1. Check cache first
+  // 1. Check cache and evaluate explicit business rules first (Priorities 1 to 8)
   records.forEach((rec, idx) => {
     const hash = rec.hash_descripcion || hashText(rec.descripcion_original || `empty_${idx}`);
     if (analysisCache.has(hash)) {
@@ -58,6 +53,30 @@ export async function analyzePQRSBatch(
         ...cached,
         numero_expediente: rec.numero_expediente
       };
+      return;
+    }
+
+    // Evaluate business rules ladder
+    const deterministic = classifyPQRDeterministic(rec);
+    
+    // Explicit business rules that have absolute priority over generic semantic classification:
+    // FRAUDES, PSE, CDT, GT5, GMF, CUOTA DE MANEJO, SEGUROS, EMBARGOS, ACTUALIZACIÓN DE DATOS, etc.
+    const hasExplicitRule =
+      deterministic.categoria_principal === 'FRAUDES' ||
+      deterministic.categoria_principal === 'PSE' ||
+      deterministic.categoria_principal === 'CDT' ||
+      deterministic.categoria_principal === 'GT5' ||
+      deterministic.categoria_principal === 'GMF' ||
+      deterministic.categoria_principal === 'CUOTA DE MANEJO' ||
+      deterministic.categoria_principal === 'SEGUROS' ||
+      deterministic.categoria_principal === 'EMBARGOS' ||
+      deterministic.categoria_principal === 'ACTUALIZACIÓN DE DATOS' ||
+      deterministic.categoria_principal === 'REVISIÓN HUMANA';
+
+    if (hasExplicitRule) {
+      const analysis = buildPQRSAnalysis(rec, deterministic);
+      results[idx] = analysis;
+      analysisCache.set(hash, analysis);
     } else {
       pendingIndices.push(idx);
       recordsToAnalyze.push(rec);
@@ -68,7 +87,7 @@ export async function analyzePQRSBatch(
     return consolidateBatchClassifications(results);
   }
 
-  // Format cases for Gemini showing DESC_DETALLADA as primary source
+  // Format remaining cases for Gemini (PRIORIDAD 9: CLASIFICACIÓN SEMÁNTICA)
   const formattedCases = recordsToAnalyze.map(r => ({
     expediente: String(r.numero_expediente),
     DESC_DETALLADA: String(r.descripcion_original || ''),
@@ -77,94 +96,22 @@ export async function analyzePQRSBatch(
   }));
 
   const prompt = `
-Quiero que actúes como un CLASIFICADOR INTELIGENTE DE PQR/PQRS BANCARIO.
+Quiero que actúes como un CLASIFICADOR OPERATIVO DE PQR/PQRS BANCARIO.
 
-OBJETIVO:
-1. Leer principalmente "DESC_DETALLADA" como fuente de verdad primordial.
-2. Interpretar la INTENCIÓN REAL del cliente (no te quedes únicamente en palabras clave literales).
-3. Identificar el gran tema (CATEGORÍA PRINCIPAL).
-4. Asignar la SUBCATEGORÍA correspondiente.
-5. Redactar un RESUMEN DEL REQUERIMIENTO de MÁXIMO 20 PALABRAS (conciso, claro y directo).
-6. Asignar nivel de CONFIANZA (0 a 100).
-7. Determinar si realmente requiere REVISIÓN HUMANA (true ÚNICAMENTE si la descripción está vacía, es puro ruido o carece de información).
-   PROHIBIDO enviar casos a "REVISIÓN HUMANA" por precaución o complejidad si el tema es identificable.
-   PROHIBIDO utilizar "OTRAS" como comodín de descarte.
+REGLAS DE PRIORIDAD ABSOLUTA:
+1. FRAUDES: Si el cliente manifiesta no reconocer una compra, débito, transferencia o producto (ej: "no reconozco", "yo no hice", "no autoricé", "no sé qué es", "me robaron", "desconozco"). NO investigar si fue fraude, clasificar inmediatamente como FRAUDES.
+2. PSE: Si el caso menciona PSE (pago, error, soporte de PSE).
+3. CDT: SOLO si menciona explícitamente CDT o certificado de depósito a término. ¡La palabra "cuenta" NUNCA es CDT!
+4. GT5: Casos de cargo a cuenta en oficina, cargo cuenta día, cargo transacción no aplicada o RECUP TRANX.
+5. GMF: 4x1000, marcación, desmarcación o devolución.
+6. CUOTA DE MANEJO: Cobro, exoneración, reclamación o devolución de cuota de manejo.
+7. SEGUROS: Pólizas de vida, desempleo, seguros atados a crédito.
+8. OTRAS CATEGORÍAS OPERATIVAS: TRANSFERENCIAS, PAGOS / ABONOS, CANALES DIGITALES, TARJETAS, CRÉDITOS / CARTERA, PRODUCTOS, COMISIONES Y COBROS, INFORMACIÓN Y DOCUMENTOS, EMBARGOS, ACTUALIZACIÓN DE DATOS, SERVICIO / ATENCIÓN.
+9. OTRAS: Casos atípicos legítimos con información suficiente.
+10. REVISIÓN HUMANA: ÚNICAMENTE si no hay información suficiente para clasificar (texto vacío, ruido o ambigüedad absoluta).
 
-PRINCIPIO FUNDAMENTAL:
-"AGRUPA POR INTENCIÓN, NO POR PALABRAS".
-Ejemplo:
-"Me cobraron cuota de manejo", "Solicito devolución de cuota de manejo", "No estoy de acuerdo con la cuota mensual" o "Quiero que me reversen el cobro de la cuenta"
--> Todos tienen la misma intención temática:
-CATEGORÍA PRINCIPAL: COMISIONES Y COBROS
-SUBCATEGORÍA: CUOTA DE MANEJO
-(NO inventar subcategorías dispersas como "Cobro cuota", "Reversión cuota", etc.).
-
-CATÁLOGO BASE HOMOGÉNEO:
-- CDT:
-  * CDT - VISUALIZACIÓN (no aparece, no visualizo en app, desapareció)
-  * CDT - RENDIMIENTOS (pago de rendimientos, liquidación de intereses, diferencias)
-  * CDT - PAGO / CANCELACIÓN (redención, vencimiento, cancelación, desembolso)
-  * CDT - CERTIFICADOS Y SOPORTES (certificados Deceval, titularidad, tributarios)
-
-- PRODUCTOS:
-  * CANCELACIÓN DE PRODUCTOS (cancelación de cuentas, tarjetas, créditos, leasing, etc.)
-  * CONDICIONES DEL PRODUCTO (tasas, beneficios, restricciones, cambios en condiciones)
-  * ACTIVACIÓN DE PRODUCTOS (activación de cuenta, tarjeta, token, habilitación de uso)
-
-- GMF / 4X1000:
-  * COBRO (reclamo por cobro del gravamen)
-  * MARCACIÓN (solicitud de marcación como cuenta exenta)
-  * DESMARCACIÓN (solicitud de desmarcación o retiro de beneficio)
-  * DEVOLUCIÓN (solicitud de reintegro de GMF cobrado)
-
-- TRANSACCIONES:
-  * TRANSFERENCIAS (transferencias rechazadas, retenidas, no recibidas, ACH, Bre-B)
-  * ACLARACIÓN DE TRANSACCIONES (explicación de movimientos, notas débito/crédito)
-  * SALDOS Y MOVIMIENTOS (saldo incorrecto, dinero no reflejado, diferencias)
-
-- CANALES DIGITALES:
-  * BANCA MÓVIL Y VIRTUAL (ingreso, usuario, contraseña, token, OTP, bloqueos)
-  * FALLAS TECNOLÓGICAS (errores en pantalla, caídas de sistema, pantallas en blanco)
-
-- PAGOS:
-  * DÉBITOS AUTOMÁTICOS (inscripción, cancelación, no aplicado, duplicado)
-  * PAGOS Y RECAUDOS (servicios públicos, convenios, abonos a obligaciones)
-  * PSE (operaciones, compras, soporte o errores en pasarela PSE)
-
-- COMISIONES Y COBROS:
-  * CUOTA DE MANEJO (cobro, reclamación, exoneración o devolución de cuota de manejo)
-  * COMISIONES Y TARIFAS (comisiones operativas, tarifas varias)
-  * INTERESES (liquidación de intereses, mora no procedente)
-
-- TARJETAS:
-  * MILLAS Y PROGRAMAS DE LEALTAD (millas, puntos, beneficios, canjes)
-  * PLÁSTICO Y BLOQUEO (envío, entrega, plástico deteriorado, cupo)
-
-- CRÉDITOS Y CARTERA:
-  * ESTADO DE OBLIGACIÓN / SALDOS (saldo pendiente, plan de pagos, liquidación)
-  * REFINANCIACIÓN Y ACUERDOS (acuerdos de pago, reestructuración)
-
-- SEGUROS:
-  * PÓLIZAS Y COBROS (cobro de seguro de vida, crédito, desempleo)
-  * CANCELACIÓN Y DEVOLUCIÓN (cancelación de seguro, devolución de primas)
-
-- FRAUDE Y SEGURIDAD:
-  * TRANSACCIONES NO RECONOCIDAS (compras, débitos, retiros o transferencias no autorizadas)
-  * SUPLANTACIÓN Y CLONACIÓN (suplantación de identidad, clonación de tarjeta)
-
-- DOCUMENTOS Y CERTIFICACIONES:
-  * CERTIFICADOS Y PAZ Y SALVO (paz y salvo, certificaciones bancarias o de deuda)
-  * EXTRACTOS Y DOCUMENTOS (copias de contratos, extractos históricos, pagarés)
-
-- SERVICIO Y ATENCIÓN:
-  * ATENCIÓN ASESOR Y SUCURSAL (inconformidad con el trato o mala asesoría)
-  * TIEMPOS DE RESPUESTA (demoras injustificadas en atención o trámites)
-
-- OTRAS:
-  * CASOS ATÍPICOS (estrictamente casos singulares que no encajen en ningún tema)
-
-- REVISIÓN HUMANA:
-  * INFORMACIÓN INSUFICIENTE (únicamente descripciones vacías o incomprensibles)
+RESUMEN DEL REQUERIMIENTO:
+Máximo 20 palabras. Directo y conciso.
 
 CASOS A CLASIFICAR (JSON):
 ${JSON.stringify(formattedCases, null, 2)}
@@ -225,7 +172,7 @@ ${JSON.stringify(formattedCases, null, 2)}
     }
   }
 
-  // Parse structured results from Gemini
+  // Parse structured results from Gemini or fallback
   if (Array.isArray(parsedArray) && parsedArray.length > 0) {
     recordsToAnalyze.forEach((rec, idx) => {
       const originalIdx = pendingIndices[idx];
@@ -233,7 +180,17 @@ ${JSON.stringify(formattedCases, null, 2)}
 
       const rawCatPrincipal = aiData?.categoria_principal || aiData?.categoria || '';
       const rawSub = aiData?.subcategoria || '';
-      const normalized = normalizeCategoryName(`${rawCatPrincipal} ${rawSub}`);
+      let normalized = normalizeCategoryName(`${rawCatPrincipal} ${rawSub}`);
+
+      // STRICT VALIDATION: If AI tried to assign CDT without explicit CDT mention, reject and reclassify
+      const lowerDesc = String(rec.descripcion_original || '').toLowerCase();
+      if (normalized.categoria_principal === 'CDT' && !/\bcdt\b/i.test(lowerDesc) && !lowerDesc.includes('certificado de deposito') && !lowerDesc.includes('deceval')) {
+        const deterministicFix = classifyPQRDeterministic(rec);
+        normalized = {
+          categoria_principal: deterministicFix.categoria_principal,
+          subcategoria: deterministicFix.subcategoria
+        };
+      }
 
       const conf = typeof aiData?.confianza === 'number' ? Math.min(100, Math.max(0, aiData.confianza)) : 94;
       const reqRev = normalized.categoria_principal === 'REVISIÓN HUMANA' || Boolean(aiData?.requiere_revision_humana);
@@ -257,7 +214,7 @@ ${JSON.stringify(formattedCases, null, 2)}
     return consolidateBatchClassifications(results);
   }
 
-  // Fallback to high-accuracy deterministic classifier if API is unavailable or offline
+  // Fallback to high-accuracy deterministic classifier if API is unavailable, offline, or rate-limited
   recordsToAnalyze.forEach((rec, idx) => {
     const originalIdx = pendingIndices[idx];
     const classification = classifyPQRDeterministic(rec);

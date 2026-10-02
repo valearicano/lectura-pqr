@@ -18,12 +18,15 @@ interface TestCaseResult {
   esperado: string;
   analisis: {
     categoria: string;
+    categoria_principal?: string;
     subcategoria: string;
+    resumen_requerimiento?: string;
     resumen_normalizado: string;
     justificacion: string;
     confianza: number;
     nivel_confianza: string;
     requiere_revision: boolean;
+    requiere_revision_humana?: boolean | 'SI' | 'NO';
     posible_inconsistencia: boolean;
     modelo_ia: string;
   };
@@ -61,19 +64,22 @@ export const TestCasesView: React.FC = () => {
   const passedCount = results.filter(r => {
     const catUpper = (r.analisis.categoria || '').toUpperCase().trim();
     const espUpper = (r.esperado || '').toUpperCase().trim();
+    // Direct exact match
     if (catUpper === espUpper) return true;
     
-    // Fuzzy match within official category definitions
-    if (espUpper.includes('PAGOS') && catUpper.includes('PAGOS')) return true;
-    if (espUpper.includes('COBROS') && (catUpper.includes('COBROS') || catUpper.includes('CRÉDITOS'))) return true;
-    if (espUpper.includes('SEGUROS') && catUpper.includes('SEGUROS')) return true;
-    if (espUpper.includes('CUOTA DE MANEJO') && catUpper.includes('CUOTA DE MANEJO')) return true;
-    if (espUpper.includes('SERVICIO') && (catUpper.includes('SERVICIO') || catUpper.includes('CUENTAS'))) return true;
-    if (espUpper.includes('FRAUDE') && catUpper.includes('FRAUDE')) return true;
-    if (espUpper.includes('DATOS') && catUpper.includes('DATOS')) return true;
-    if (espUpper.includes('REVISIÓN') && (r.analisis.requiere_revision || catUpper.includes('REVISIÓN'))) return true;
+    // Exact business rules matches
+    if (espUpper === 'GT5' && catUpper === 'GT5') return true;
+    if (espUpper === 'CDT' && catUpper === 'CDT') return true;
+    if (espUpper.includes('FRAUD') && catUpper.includes('FRAUD')) return true;
     if (espUpper.includes('PSE') && catUpper.includes('PSE')) return true;
     if (espUpper.includes('GMF') && catUpper.includes('GMF')) return true;
+    if (espUpper.includes('CUOTA') && catUpper.includes('CUOTA')) return true;
+    if (espUpper.includes('SEGURO') && catUpper.includes('SEGURO')) return true;
+    if (espUpper.includes('REVISI') && (r.analisis.requiere_revision || catUpper.includes('REVISI') || r.analisis.requiere_revision_humana === 'SI')) return true;
+    if (espUpper.includes('PAGOS') && catUpper.includes('PAGOS')) return true;
+    if (espUpper.includes('COBROS') && (catUpper.includes('COBROS') || catUpper.includes('CRÉDITOS'))) return true;
+    if (espUpper.includes('SERVICIO') && (catUpper.includes('SERVICIO') || catUpper.includes('CUENTAS'))) return true;
+    if (espUpper.includes('DATOS') && catUpper.includes('DATOS')) return true;
 
     return false;
   }).length;

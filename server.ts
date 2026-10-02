@@ -123,63 +123,75 @@ async function startServer() {
     const mandatoryTestCases = [
       {
         numero_expediente: 'TEST-001',
-        resumen_original: 'Abono realizado',
-        descripcion_original: 'Cliente realizó pago y no se refleja.',
-        esperado: 'PAGOS / ABONOS'
+        resumen_original: 'Movimiento cuenta',
+        descripcion_original: 'Mi cuenta de ahorros presenta un movimiento que no reconozco.',
+        esperado: 'FRAUDES'
       },
       {
         numero_expediente: 'TEST-002',
-        resumen_original: 'Extracto mensual',
-        descripcion_original: 'Cliente manifiesta que le cobraron intereses que considera incorrectos.',
-        esperado: 'COBROS / CARGOS'
+        resumen_original: 'Consulta CDT',
+        descripcion_original: 'Necesito revisar un CDT que no aparece en la aplicación.',
+        esperado: 'CDT'
       },
       {
         numero_expediente: 'TEST-003',
-        resumen_original: 'Consulta general',
-        descripcion_original: 'Cliente solicita información sobre una póliza de seguro de vida.',
-        esperado: 'SEGUROS'
-      },
-      {
-        numero_expediente: 'TEST-004',
-        resumen_original: 'Tarjeta de crédito',
-        descripcion_original: 'Cliente reclama cobro de cuota de manejo que prometieron no cobrar.',
-        esperado: 'CUOTA DE MANEJO'
-      },
-      {
-        numero_expediente: 'TEST-005',
-        resumen_original: 'Problema técnico',
-        descripcion_original: 'Cliente no puede ingresar a la aplicación por bloqueo de usuario.',
-        esperado: 'SERVICIO / ATENCIÓN'
-      },
-      {
-        numero_expediente: 'TEST-006',
-        resumen_original: 'Movimiento bancario',
-        descripcion_original: 'Cliente no reconoce una compra por $500.000 con su tarjeta.',
-        esperado: 'FRAUDE / TRANSACCIÓN NO RECONOCIDA'
-      },
-      {
-        numero_expediente: 'TEST-007',
-        resumen_original: 'Comunicación escrita',
-        descripcion_original: 'Cliente presenta formalmente derecho de petición solicitando copias de contratos y extractos.',
-        esperado: 'DATOS / INFORMACIÓN'
-      },
-      {
-        numero_expediente: 'TEST-008',
-        resumen_original: 'Revisión',
-        descripcion_original: 'Solicito revisar mi caso.',
-        esperado: 'REVISIÓN HUMANA'
-      },
-      {
-        numero_expediente: 'TEST-009',
-        resumen_original: 'Pago electrónico',
-        descripcion_original: 'Transacción PSE rechazada con débito en cuenta de ahorros.',
+        resumen_original: 'Pago PSE',
+        descripcion_original: 'El cliente no puede realizar pagos por PSE.',
         esperado: 'PSE'
       },
       {
+        numero_expediente: 'TEST-004',
+        resumen_original: 'Cargo oficina',
+        descripcion_original: 'Se presenta cargo a cuenta en oficina.',
+        esperado: 'GT5'
+      },
+      {
+        numero_expediente: 'TEST-005',
+        resumen_original: 'Cargo cuenta día',
+        descripcion_original: 'Se registra cargo cuenta día.',
+        esperado: 'GT5'
+      },
+      {
+        numero_expediente: 'TEST-006',
+        resumen_original: 'Recup Tranx',
+        descripcion_original: 'Cliente presenta RECUP TRANX.',
+        esperado: 'GT5'
+      },
+      {
+        numero_expediente: 'TEST-007',
+        resumen_original: 'Débito desconocido',
+        descripcion_original: 'No sé qué es este débito de mi cuenta.',
+        esperado: 'FRAUDES'
+      },
+      {
+        numero_expediente: 'TEST-008',
+        resumen_original: 'Exención 4x1000',
+        descripcion_original: 'Quiero marcar mi cuenta para que no cobre 4x1000.',
+        esperado: 'GMF'
+      },
+      {
+        numero_expediente: 'TEST-009',
+        resumen_original: 'Cobro cuota',
+        descripcion_original: 'Me están cobrando cuota de manejo.',
+        esperado: 'CUOTA DE MANEJO'
+      },
+      {
         numero_expediente: 'TEST-010',
-        resumen_original: 'Gravamen tributario',
-        descripcion_original: 'Solicito marcación de mi cuenta de ahorros como exenta de 4x1000 GMF.',
-        esperado: 'GMF / 4X1000'
+        resumen_original: 'Devolución cuota',
+        descripcion_original: 'Solicito devolución de la cuota de manejo.',
+        esperado: 'CUOTA DE MANEJO'
+      },
+      {
+        numero_expediente: 'TEST-011',
+        resumen_original: 'Póliza',
+        descripcion_original: 'El cliente tiene un seguro que desea revisar.',
+        esperado: 'SEGUROS'
+      },
+      {
+        numero_expediente: 'TEST-012',
+        resumen_original: 'Cuenta sola',
+        descripcion_original: 'Cuenta de ahorros',
+        esperado: 'REVISIÓN HUMANA'
       }
     ];
 
