@@ -171,54 +171,55 @@ ${JSON.stringify(formattedCases, null, 2)}
 `;
 
   let parsedArray: any[] | null = null;
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest'];
+  const modelsToTry = ['gemini-3.8-flash'];
 
   if (process.env.GEMINI_API_KEY) {
+    let rateLimited = false;
     for (const modelName of modelsToTry) {
-      if (parsedArray) break;
+      if (parsedArray || rateLimited) break;
 
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          const apiCall = ai.models.generateContent({
-            model: modelName,
-            contents: prompt,
-            config: {
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    expediente: { type: Type.STRING },
-                    categoria_principal: { type: Type.STRING },
-                    subcategoria: { type: Type.STRING },
-                    resumen_requerimiento: { type: Type.STRING, description: 'Máximo 20 palabras resumiendo la solicitud' },
-                    intencion_cliente: { type: Type.STRING, description: 'Intención real interpretada del cliente' },
-                    confianza: { type: Type.INTEGER, description: 'Nivel de confianza de 0 a 100' },
-                    requiere_revision_humana: { type: Type.BOOLEAN }
-                  },
-                  required: ['expediente', 'categoria_principal', 'subcategoria', 'resumen_requerimiento', 'confianza', 'requiere_revision_humana']
-                }
+      try {
+        const apiCall = ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  expediente: { type: Type.STRING },
+                  categoria_principal: { type: Type.STRING },
+                  subcategoria: { type: Type.STRING },
+                  resumen_requerimiento: { type: Type.STRING, description: 'Máximo 20 palabras resumiendo la solicitud' },
+                  intencion_cliente: { type: Type.STRING, description: 'Intención real interpretada del cliente' },
+                  confianza: { type: Type.INTEGER, description: 'Nivel de confianza de 0 a 100' },
+                  requiere_revision_humana: { type: Type.BOOLEAN }
+                },
+                required: ['expediente', 'categoria_principal', 'subcategoria', 'resumen_requerimiento', 'confianza', 'requiere_revision_humana']
               }
             }
-          });
-
-          const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout de respuesta Gemini (7s)')), 7000)
-          );
-
-          const response: any = await Promise.race([apiCall, timeoutPromise]);
-
-          const parsedText = response.text ? response.text.trim() : '[]';
-          parsedArray = JSON.parse(parsedText);
-          if (Array.isArray(parsedArray) && parsedArray.length > 0) {
-            break;
           }
-        } catch (err: any) {
-          console.warn(`[Gemini API] Intento ${attempt} con ${modelName} falló:`, err.message || err);
-          if (attempt < 2) {
-            await new Promise(res => setTimeout(res, 500));
-          }
+        });
+
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout de respuesta Gemini (4s)')), 4000)
+        );
+
+        const response: any = await Promise.race([apiCall, timeoutPromise]);
+
+        const parsedText = response.text ? response.text.trim() : '[]';
+        parsedArray = JSON.parse(parsedText);
+        if (Array.isArray(parsedArray) && parsedArray.length > 0) {
+          break;
+        }
+      } catch (err: any) {
+        const errMsg = String(err.message || err);
+        console.warn(`[Gemini API] Solicitud con ${modelName} falló:`, errMsg);
+        if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota exceeded')) {
+          rateLimited = true;
+          break;
         }
       }
     }

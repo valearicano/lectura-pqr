@@ -179,12 +179,25 @@ export function normalizeCategoryName(raw: string): { categoria_principal: strin
     return { categoria_principal: 'SERVICIO Y ATENCIÓN', subcategoria: 'ATENCIÓN ASESOR Y SUCURSAL' };
   }
 
+  // COMISIONES Y COBROS
+  if (clean.includes('COMISION') || clean.includes('COBRO') || clean.includes('TARIFA') || clean.includes('INTERES')) {
+    if (clean.includes('INTERES')) {
+      return { categoria_principal: 'COMISIONES Y COBROS', subcategoria: 'INTERESES' };
+    }
+    return { categoria_principal: 'COMISIONES Y COBROS', subcategoria: 'COMISIONES Y TARIFAS' };
+  }
+
   // REVISIÓN HUMANA
-  if (clean.includes('REVISION HUMANA') || clean.includes('REVISIÓN HUMANA')) {
+  if (clean.includes('REVISION') || clean.includes('HUMANA') || clean.includes('INSUFICIENTE')) {
     return { categoria_principal: 'REVISIÓN HUMANA', subcategoria: 'INFORMACIÓN INSUFICIENTE' };
   }
 
-  return { categoria_principal: 'COMISIONES Y COBROS', subcategoria: 'COMISIONES Y TARIFAS' };
+  // OTRAS
+  if (clean.includes('OTRA') || clean.includes('OTRO') || clean.includes('ATIPIC')) {
+    return { categoria_principal: 'OTRAS', subcategoria: 'CASOS ATÍPICOS' };
+  }
+
+  return { categoria_principal: 'OTRAS', subcategoria: 'CASOS ATÍPICOS' };
 }
 
 /**
@@ -197,7 +210,7 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   const lower = rawText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const cleanAlpha = lower.replace(/[^a-z0-9]/g, '');
 
-  // 1. REVISIÓN HUMANA: Estrictamente si la descripción está vacía o es solo un marcador de posición
+  // 1. REVISIÓN HUMANA: Estrictamente si la descripción está vacía, es ruido o carece de información temática
   const isEssentiallyEmpty =
     cleanAlpha.length === 0 ||
     cleanAlpha === 'descripcion' ||
@@ -206,18 +219,26 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     cleanAlpha === 'na' ||
     cleanAlpha === 'null' ||
     cleanAlpha === 'none' ||
-    cleanAlpha === 'noaplica';
+    cleanAlpha === 'noaplica' ||
+    cleanAlpha === 'revisar' ||
+    cleanAlpha === 'revision' ||
+    cleanAlpha === 'revisarmicaso' ||
+    cleanAlpha === 'solicitorevisarmicaso' ||
+    cleanAlpha === 'solicitorevision' ||
+    cleanAlpha === 'favorrevisar' ||
+    cleanAlpha === 'revisionhumana' ||
+    cleanAlpha === 'revisarcaso';
 
   if (isEssentiallyEmpty) {
     return {
       expediente,
       categoria_principal: 'REVISIÓN HUMANA',
       subcategoria: 'INFORMACIÓN INSUFICIENTE',
-      resumen_requerimiento: 'Descripción ausente o insuficiente para clasificar.',
-      intencion_cliente: 'Sin información de solicitud',
-      confianza: 30,
+      resumen_requerimiento: 'Descripción ausente o vaga sin temática identificable.',
+      intencion_cliente: 'Sin información de solicitud identificable',
+      confianza: 35,
       requiere_revision_humana: true,
-      motivo_de_revision: 'DESC_DETALLADA está vacía o contiene solo marcadores sin contenido analizable.'
+      motivo_de_revision: 'DESC_DETALLADA carece de información sobre el producto, transacción o inconformidad del cliente.'
     };
   }
 
@@ -232,6 +253,9 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     if (lower.includes('no aparece') || lower.includes('no visualiz') || lower.includes('desapareci') || lower.includes('no encuentro') || lower.includes('app')) {
       sub = 'CDT - VISUALIZACIÓN';
       intencion = 'Problema para visualizar CDT en canales digitales';
+    } else if (lower.includes('rendimiento') || lower.includes('interes') || lower.includes('liquidacion')) {
+      sub = 'CDT - RENDIMIENTOS';
+      intencion = 'Consulta o reclamo sobre rendimientos o intereses de CDT';
     } else if (lower.includes('pago') || lower.includes('cancel') || lower.includes('redenc') || lower.includes('vencim') || lower.includes('desembols')) {
       sub = 'CDT - PAGO / CANCELACIÓN';
       intencion = 'Redención o pago de CDT por vencimiento o cancelación';
@@ -284,7 +308,15 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   }
 
   // C. INTENCIÓN: GMF / 4X1000
-  if (lower.includes('4x1000') || lower.includes('4*1000') || lower.includes('cuatro por mil') || lower.includes('gmf') || (lower.includes('marcacion') && lower.includes('cuenta'))) {
+  const isGMF =
+    lower.includes('4x1000') ||
+    lower.includes('4*1000') ||
+    lower.includes('cuatro por mil') ||
+    lower.includes('gmf') ||
+    lower.includes('gravamen') ||
+    ((lower.includes('marcar') || lower.includes('marcacion') || lower.includes('desmarcar')) && (lower.includes('cuenta') || lower.includes('exenta') || lower.includes('exento')));
+
+  if (isGMF) {
     let sub = 'COBRO';
     let intencion = 'Inconformidad con cobro del gravamen 4x1000';
     if (lower.includes('desmarca') || lower.includes('retirar marcacion') || lower.includes('quitar marcacion') || lower.includes('quitar la marcacion') || lower.includes('eliminar marcacion')) {
@@ -315,6 +347,7 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     lower.includes('cuotas de manejo') ||
     lower.includes('cuota manejo') ||
     lower.includes('cobro de cuota') ||
+    lower.includes('cobro cuota') ||
     lower.includes('cuota mensual') ||
     (lower.includes('reversen el cobro') && lower.includes('cuenta'));
 
@@ -330,7 +363,23 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // E. INTENCIÓN: CANCELACIÓN DE PRODUCTOS
+  // E. INTENCIÓN: DOCUMENTOS Y CERTIFICACIONES (Paz y salvo, certificados, extractos)
+  // Evaluado antes de créditos y transacciones para no perder la intención documental
+  if (lower.includes('paz y salvo') || lower.includes('certificacion') || lower.includes('certificado') || lower.includes('extracto') || lower.includes('copia de contrato') || lower.includes('pagare') || lower.includes('derecho de peticion')) {
+    const isCert = lower.includes('certificado') || lower.includes('certificacion') || lower.includes('paz y salvo');
+    const sub = isCert ? 'CERTIFICADOS Y PAZ Y SALVO' : 'EXTRACTOS Y DOCUMENTOS';
+    return {
+      expediente,
+      categoria_principal: 'DOCUMENTOS Y CERTIFICACIONES',
+      subcategoria: sub,
+      resumen_requerimiento: generateCompactSummary(rawText, 'DOCUMENTOS Y CERTIFICACIONES', sub),
+      intencion_cliente: 'Solicitud de emisión o envío de documentos bancarios',
+      confianza: 96,
+      requiere_revision_humana: false
+    };
+  }
+
+  // F. INTENCIÓN: CANCELACIÓN DE PRODUCTOS
   if ((lower.includes('cancel') || lower.includes('cierre') || lower.includes('terminar contrato')) &&
       (lower.includes('cuenta') || lower.includes('tarjeta') || lower.includes('credito') || lower.includes('leasing') || lower.includes('producto'))) {
     return {
@@ -344,7 +393,7 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // F. INTENCIÓN: CONDICIONES O BENEFICIOS DEL PRODUCTO
+  // G. INTENCIÓN: CONDICIONES O BENEFICIOS DEL PRODUCTO
   if (lower.includes('tasa') || lower.includes('condicion') || lower.includes('beneficio') || lower.includes('cambio de condiciones') || lower.includes('migrada')) {
     return {
       expediente,
@@ -357,7 +406,7 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // G. INTENCIÓN: ACTIVACIÓN DE PRODUCTOS
+  // H. INTENCIÓN: ACTIVACIÓN DE PRODUCTOS
   if (lower.includes('activar') || lower.includes('activacion') || lower.includes('habilitar uso') || lower.includes('habilitar para uso')) {
     return {
       expediente,
@@ -366,6 +415,21 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
       resumen_requerimiento: generateCompactSummary(rawText, 'PRODUCTOS', 'ACTIVACIÓN DE PRODUCTOS'),
       intencion_cliente: 'Solicitud de activación o habilitación operativa del producto',
       confianza: 95,
+      requiere_revision_humana: false
+    };
+  }
+
+  // I. INTENCIÓN: CRÉDITOS Y CARTERA (Refinanciaciones y acuerdos de pago deben evaluarse antes de pagos generales)
+  if (lower.includes('acuerdo de pago') || lower.includes('acuerdos de pago') || lower.includes('refinanc') || lower.includes('alivio financiero') || lower.includes('reestructuracion') || lower.includes('credito') || lower.includes('cartera') || lower.includes('prestamo') || lower.includes('libranza') || lower.includes('hipotecario')) {
+    const isRefinance = lower.includes('refinanc') || lower.includes('acuerdo') || lower.includes('alivio') || lower.includes('reestructur');
+    const sub = isRefinance ? 'REFINANCIACIÓN Y ACUERDOS' : 'ESTADO DE OBLIGACIÓN / SALDOS';
+    return {
+      expediente,
+      categoria_principal: 'CRÉDITOS Y CARTERA',
+      subcategoria: sub,
+      resumen_requerimiento: generateCompactSummary(rawText, 'CRÉDITOS Y CARTERA', sub),
+      intencion_cliente: 'Consulta o gestión de obligación crediticia o acuerdo de pago',
+      confianza: 96,
       requiere_revision_humana: false
     };
   }
@@ -535,8 +599,8 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   }
 
   // T. INTENCIÓN: SERVICIO Y ATENCIÓN
-  if (lower.includes('atencion') || lower.includes('servicio') || lower.includes('asesor') || lower.includes('sucursal') || lower.includes('oficina') || lower.includes('mal trato') || lower.includes('tiempo de espera')) {
-    const isTime = lower.includes('tiempo') || lower.includes('demora') || lower.includes('plazo');
+  if (lower.includes('atencion') || lower.includes('servicio') || lower.includes('asesor') || lower.includes('sucursal') || lower.includes('oficina') || lower.includes('mal trato') || lower.includes('tiempo de espera') || lower.includes('tiempos de respuesta') || lower.includes('demora') || lower.includes('sin respuesta') || lower.includes('radicado sin')) {
+    const isTime = lower.includes('tiempo') || lower.includes('demora') || lower.includes('plazo') || lower.includes('sin respuesta');
     const sub = isTime ? 'TIEMPOS DE RESPUESTA' : 'ATENCIÓN ASESOR Y SUCURSAL';
     return {
       expediente,
