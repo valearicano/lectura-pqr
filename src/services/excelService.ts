@@ -74,36 +74,24 @@ export function exportEnrichedExcel(
       row['NO_SS'] = r.numero_expediente;
     }
 
-    // 2. Append standard AI master classification columns
+    // 2. Append standard master classification columns (Section 16 simple format)
     const a = r.analisis;
     const catPrincipal = a?.categoria_principal || a?.categoria || 'Sin procesar';
     const subcat = a?.subcategoria || 'General';
     const resumenReq = a?.resumen_requerimiento || a?.resumen_normalizado || '';
-    const intencion = a?.intencion_cliente || a?.solicitud_cliente || '';
     const conf = a?.confianza !== undefined ? a.confianza : 90;
+    const nivelConfianza = a?.nivel_confianza || (conf >= 85 ? 'Alta' : conf >= 70 ? 'Media' : 'Baja');
     const reqRev = a?.requiere_revision_humana === 'SI' || a?.requiere_revision || catPrincipal === 'REVISIÓN HUMANA' ? 'SI' : 'NO';
 
+    row['ID_SOLICITUD_ORIGINAL'] = r.numero_expediente;
     row['CATEGORIA_PRINCIPAL'] = catPrincipal;
     row['SUBCATEGORIA'] = subcat;
     row['RESUMEN_REQUERIMIENTO'] = resumenReq;
-    row['INTENCION_REAL_CLIENTE'] = intencion;
-    row['CATEGORIA_MAESTRA'] = catPrincipal;
-    row['CONFIANZA'] = conf;
-    row['REQUIERE_REVISION_HUMANA'] = reqRev;
-    row['FORMATO_JSON_CORTO'] = JSON.stringify({
-      expediente: r.numero_expediente,
-      categoria_principal: catPrincipal,
-      subcategoria: subcat,
-      resumen_requerimiento: resumenReq,
-      confianza: conf,
-      requiere_revision_humana: reqRev === 'SI'
-    });
-
-    // Complementary audit details
-    row['MOTIVO_DE_REVISION'] = a?.motivo_de_revision || '';
-    row['EXISTE_INCONSISTENCIA'] = a?.existe_inconsistencia === 'SI' || a?.posible_inconsistencia ? 'SI' : 'NO';
-    row['TIPO_PQR'] = a?.tipo_pqr || (catPrincipal === 'DOCUMENTOS Y CERTIFICACIONES' ? 'PETICIÓN' : 'RECLAMO');
-    row['FECHA_ANALISIS'] = a?.fecha_analisis || new Date().toISOString().split('T')[0];
+    row['NIVEL_DE_CONFIANZA'] = nivelConfianza;
+    row['REQUIERE_REVISION'] = reqRev;
+    if (reqRev === 'SI' && a?.motivo_de_revision) {
+      row['MOTIVO_DE_REVISION'] = a.motivo_de_revision;
+    }
 
     return row;
   });

@@ -75,9 +75,9 @@ export function validateRecords(
       resumen_original: resumenStr,
       descripcion_original: descStr,
       descripcion_normalizada: descNormalizada,
-      fecha_carga: new Date().toISOString(),
       archivo_origen: archivoNombre,
-      hash_descripcion: hashText(descNormalizada || `empty_${filaNum}`),
+      fecha_carga: new Date().toISOString(),
+      hash_descripcion: hashText(`${descNormalizada}|${resumenStr}|${columnasAdicionales.SUBMOTIVO || ''}|${columnasAdicionales.NOMBRE_PRODUCTO || ''}` || `empty_${filaNum}`),
       columnas_adicionales: columnasAdicionales,
       estado_procesamiento: 'PENDIENTE'
     });

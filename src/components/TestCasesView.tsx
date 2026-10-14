@@ -16,6 +16,9 @@ interface TestCaseResult {
   resumen_original: string;
   descripcion_original: string;
   esperado: string;
+  subcategoria_esperada?: string;
+  producto_esperado?: string;
+  requiere_revision_esperada?: boolean;
   analisis: {
     categoria: string;
     categoria_principal?: string;
@@ -28,6 +31,10 @@ interface TestCaseResult {
     requiere_revision: boolean;
     requiere_revision_humana?: boolean | 'SI' | 'NO';
     posible_inconsistencia: boolean;
+    producto?: string;
+    producto_detectado?: string;
+    problema_principal?: string;
+    solicitud_cliente?: string;
     modelo_ia: string;
   };
 }
@@ -62,26 +69,28 @@ export const TestCasesView: React.FC = () => {
   }, []);
 
   const passedCount = results.filter(r => {
-    const catUpper = (r.analisis.categoria || '').toUpperCase().trim();
+    const catUpper = (r.analisis.categoria || r.analisis.categoria_principal || '').toUpperCase().trim();
     const espUpper = (r.esperado || '').toUpperCase().trim();
-    // Direct exact match
-    if (catUpper === espUpper) return true;
     
-    // Exact business rules matches
-    if (espUpper === 'GT5' && catUpper === 'GT5') return true;
-    if (espUpper === 'CDT' && catUpper === 'CDT') return true;
-    if (espUpper.includes('FRAUD') && catUpper.includes('FRAUD')) return true;
-    if (espUpper.includes('PSE') && catUpper.includes('PSE')) return true;
-    if (espUpper.includes('GMF') && catUpper.includes('GMF')) return true;
-    if (espUpper.includes('CUOTA') && catUpper.includes('CUOTA')) return true;
-    if (espUpper.includes('SEGURO') && catUpper.includes('SEGURO')) return true;
-    if (espUpper.includes('REVISI') && (r.analisis.requiere_revision || catUpper.includes('REVISI') || r.analisis.requiere_revision_humana === 'SI')) return true;
-    if (espUpper.includes('PAGOS') && catUpper.includes('PAGOS')) return true;
-    if (espUpper.includes('COBROS') && (catUpper.includes('COBROS') || catUpper.includes('CRÉDITOS'))) return true;
-    if (espUpper.includes('SERVICIO') && (catUpper.includes('SERVICIO') || catUpper.includes('CUENTAS'))) return true;
-    if (espUpper.includes('DATOS') && catUpper.includes('DATOS')) return true;
+    const isCatPassed = catUpper === espUpper ||
+      (espUpper === 'GT5' && catUpper === 'GT5') ||
+      (espUpper === 'CDT' && catUpper === 'CDT') ||
+      (espUpper.includes('FRAUD') && catUpper.includes('FRAUD')) ||
+      (espUpper.includes('PSE') && catUpper.includes('PSE')) ||
+      (espUpper.includes('GMF') && catUpper.includes('GMF')) ||
+      (espUpper.includes('CUOTA') && catUpper.includes('CUOTA')) ||
+      (espUpper.includes('SEGURO') && catUpper.includes('SEGURO')) ||
+      (espUpper.includes('REVISI') && (r.analisis.requiere_revision || catUpper.includes('REVISI') || r.analisis.requiere_revision_humana === 'SI')) ||
+      (espUpper.includes('PAGOS') && catUpper.includes('PAGOS')) ||
+      (espUpper.includes('COBROS') && catUpper.includes('COBROS')) ||
+      (espUpper.includes('TARJETA') && catUpper.includes('TARJETA')) ||
+      (espUpper.includes('INFORMACI') && catUpper.includes('INFORMACI')) ||
+      (espUpper.includes('EMBARGO') && catUpper.includes('EMBARGO'));
 
-    return false;
+    const isSubPassed = !r.subcategoria_esperada || (r.analisis.subcategoria || '').toUpperCase().trim() === r.subcategoria_esperada.toUpperCase().trim();
+    const isRevPassed = r.requiere_revision_esperada === undefined || r.analisis.requiere_revision === r.requiere_revision_esperada;
+
+    return isCatPassed && isSubPassed && isRevPassed;
   }).length;
 
   return (
@@ -120,7 +129,7 @@ export const TestCasesView: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <span className="text-xs text-slate-500 block">Total Casos de Prueba</span>
-          <span className="text-2xl font-bold text-slate-900">8 Casos Mandatorios</span>
+          <span className="text-2xl font-bold text-slate-900">{results.length > 0 ? `${results.length} Casos Mandatorios` : '12 Casos Mandatorios'}</span>
           <span className="text-xs text-slate-400 block mt-0.5">Definidos en la especificación</span>
         </div>
 
@@ -162,6 +171,28 @@ export const TestCasesView: React.FC = () => {
         ) : (
           results.map(item => {
             const a = item.analisis;
+            const catUpper = (a.categoria || a.categoria_principal || '').toUpperCase().trim();
+            const espUpper = (item.esperado || '').toUpperCase().trim();
+            
+            const isCatPassed = catUpper === espUpper ||
+              (espUpper === 'GT5' && catUpper === 'GT5') ||
+              (espUpper === 'CDT' && catUpper === 'CDT') ||
+              (espUpper.includes('FRAUD') && catUpper.includes('FRAUD')) ||
+              (espUpper.includes('PSE') && catUpper.includes('PSE')) ||
+              (espUpper.includes('GMF') && catUpper.includes('GMF')) ||
+              (espUpper.includes('CUOTA') && catUpper.includes('CUOTA')) ||
+              (espUpper.includes('SEGURO') && catUpper.includes('SEGURO')) ||
+              (espUpper.includes('REVISI') && (a.requiere_revision || catUpper.includes('REVISI') || a.requiere_revision_humana === 'SI')) ||
+              (espUpper.includes('PAGOS') && catUpper.includes('PAGOS')) ||
+              (espUpper.includes('COBROS') && catUpper.includes('COBROS')) ||
+              (espUpper.includes('TARJETA') && catUpper.includes('TARJETA')) ||
+              (espUpper.includes('INFORMACI') && catUpper.includes('INFORMACI')) ||
+              (espUpper.includes('EMBARGO') && catUpper.includes('EMBARGO'));
+
+            const isSubPassed = !item.subcategoria_esperada || (a.subcategoria || '').toUpperCase().trim() === item.subcategoria_esperada.toUpperCase().trim();
+            const isRevPassed = item.requiere_revision_esperada === undefined || a.requiere_revision === item.requiere_revision_esperada;
+            const isPassed = isCatPassed && isSubPassed && isRevPassed;
+
             return (
               <div
                 key={item.numero_expediente}
@@ -169,20 +200,32 @@ export const TestCasesView: React.FC = () => {
               >
                 {/* Header row */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center space-x-2.5">
+                  <div className="flex items-center space-x-2.5 flex-wrap">
                     <span className="font-mono text-xs font-bold px-2 py-0.5 bg-slate-100 rounded text-slate-800 border border-slate-200">
                       {item.numero_expediente}
                     </span>
                     <span className="text-xs font-semibold text-slate-800">
-                      Criterio Esperado: <strong className="text-blue-700">{item.esperado}</strong>
+                      Criterio Esperado: <strong className="text-blue-700">{item.esperado}</strong> {item.subcategoria_esperada ? <span className="text-slate-500 font-normal">&gt; {item.subcategoria_esperada}</span> : null}
                     </span>
+                    {item.producto_esperado && (
+                      <span className="text-[11px] font-medium px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-100">
+                        Prod: {item.producto_esperado}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
-                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                      PASÓ PRUEBA
-                    </span>
+                    {isPassed ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+                        <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                        PASÓ PRUEBA
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800">
+                        <XCircle className="w-3.5 h-3.5 mr-1" />
+                        NO COINCIDE
+                      </span>
+                    )}
                     <span className="text-xs font-bold text-slate-600 px-2 py-0.5 bg-slate-100 rounded">
                       {a.confianza}% conf.
                     </span>

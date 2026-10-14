@@ -46,7 +46,8 @@ export async function analyzePQRSBatch(
 
   // 1. Check cache and evaluate explicit business rules first (Priorities 1 to 8)
   records.forEach((rec, idx) => {
-    const hash = rec.hash_descripcion || hashText(rec.descripcion_original || `empty_${idx}`);
+    const contextKey = `${rec.descripcion_original || ''}|${rec.submotivo_original || ''}|${rec.resumen_original || ''}|${rec.producto_original || ''}`;
+    const hash = hashText(contextKey);
     if (analysisCache.has(hash)) {
       const cached = analysisCache.get(hash)!;
       results[idx] = {
@@ -60,7 +61,7 @@ export async function analyzePQRSBatch(
     const deterministic = classifyPQRDeterministic(rec);
     
     // Explicit business rules that have absolute priority over generic semantic classification:
-    // FRAUDES, PSE, CDT, GT5, GMF, CUOTA DE MANEJO, SEGUROS, EMBARGOS, ACTUALIZACIÓN DE DATOS, etc.
+    // FRAUDES, PSE, CDT, GT5, GMF, CUOTA DE MANEJO, SEGUROS, EMBARGOS, TARJETAS, PAGOS, COMISIONES, etc.
     const hasExplicitRule =
       deterministic.categoria_principal === 'FRAUDES' ||
       deterministic.categoria_principal === 'PSE' ||
@@ -70,6 +71,10 @@ export async function analyzePQRSBatch(
       deterministic.categoria_principal === 'CUOTA DE MANEJO' ||
       deterministic.categoria_principal === 'SEGUROS' ||
       deterministic.categoria_principal === 'EMBARGOS' ||
+      deterministic.categoria_principal === 'TARJETAS' ||
+      deterministic.categoria_principal === 'PAGOS / ABONOS' ||
+      deterministic.categoria_principal === 'COMISIONES Y COBROS' ||
+      deterministic.categoria_principal === 'INFORMACIÓN Y DOCUMENTOS' ||
       deterministic.categoria_principal === 'ACTUALIZACIÓN DE DATOS' ||
       deterministic.categoria_principal === 'REVISIÓN HUMANA';
 
@@ -100,18 +105,29 @@ Quiero que actúes como un CLASIFICADOR OPERATIVO DE PQR/PQRS BANCARIO.
 
 REGLAS DE PRIORIDAD ABSOLUTA:
 1. FRAUDES: Si el cliente manifiesta no reconocer una compra, débito, transferencia o producto (ej: "no reconozco", "yo no hice", "no autoricé", "no sé qué es", "me robaron", "desconozco"). NO investigar si fue fraude, clasificar inmediatamente como FRAUDES.
-2. PSE: Si el caso menciona PSE (pago, error, soporte de PSE).
+2. PSE: Si el caso menciona PSE (pago, error, soporte de PSE). Si el pago de tarjeta fue por PSE, clasificar como PSE conservando el producto detectado.
 3. CDT: SOLO si menciona explícitamente CDT o certificado de depósito a término. ¡La palabra "cuenta" NUNCA es CDT!
 4. GT5: Casos de cargo a cuenta en oficina, cargo cuenta día, cargo transacción no aplicada o RECUP TRANX.
 5. GMF: 4x1000, marcación, desmarcación o devolución.
-6. CUOTA DE MANEJO: Cobro, exoneración, reclamación o devolución de cuota de manejo.
-7. SEGUROS: Pólizas de vida, desempleo, seguros atados a crédito.
-8. OTRAS CATEGORÍAS OPERATIVAS: TRANSFERENCIAS, PAGOS / ABONOS, CANALES DIGITALES, TARJETAS, CRÉDITOS / CARTERA, PRODUCTOS, COMISIONES Y COBROS, INFORMACIÓN Y DOCUMENTOS, EMBARGOS, ACTUALIZACIÓN DE DATOS, SERVICIO / ATENCIÓN.
+6. CUOTA DE MANEJO: Cobro, exoneración, reclamación o devolución de cuota de manejo (tarjetas o cuentas).
+7. SEGUROS: Pólizas de vida, desempleo, seguros asociados a tarjeta o atados a crédito.
+8. TARJETAS DE CRÉDITO Y OPERATIVAS:
+   - Pagos no aplicados o duplicados: PAGOS / ABONOS > APLICACIÓN DE PAGO.
+   - Intereses de mora o corrientes: COMISIONES Y COBROS > INTERESES.
+   - Cupo y avances: TARJETAS > CUPO Y AVANCES.
+   - Compras y devoluciones comerciales: TARJETAS > COMPRAS Y DEVOLUCIONES.
+   - Extractos y fechas de corte: INFORMACIÓN Y DOCUMENTOS > EXTRACTOS Y DOCUMENTOS.
+   - Compras diferidas y financiación: TARJETAS > DIFERIDOS Y FINANCIACIÓN.
+   - Entrega, deterioro y reposición de plástico: TARJETAS > PLÁSTICO Y BLOQUEO.
+   - Cancelación voluntaria: PRODUCTOS > CANCELACIÓN DE PRODUCTOS.
+   - Activación de tarjeta: PRODUCTOS > ACTIVACIÓN DE PRODUCTOS.
+   - Millas y puntos: TARJETAS > MILLAS Y PROGRAMAS DE LEALTAD.
+   - Embargos financieros reales: EMBARGOS > DESEMBARGO o APLICACIÓN DE EMBARGO (¡NUNCA confundir la conjunción "sin embargo" con un embargo financiero!).
 9. OTRAS: Casos atípicos legítimos con información suficiente.
-10. REVISIÓN HUMANA: ÚNICAMENTE si no hay información suficiente para clasificar (texto vacío, ruido o ambigüedad absoluta).
+10. REVISIÓN HUMANA: ÚNICAMENTE si no hay información suficiente para clasificar (texto vacío, ruido o mención aislada de un producto sin problema específico).
 
 RESUMEN DEL REQUERIMIENTO:
-Máximo 20 palabras. Directo y conciso.
+Máximo 20 palabras. Explica la petición o reclamo real del cliente.
 
 CASOS A CLASIFICAR (JSON):
 ${JSON.stringify(formattedCases, null, 2)}
@@ -203,11 +219,16 @@ ${JSON.stringify(formattedCases, null, 2)}
         intencion_cliente: aiData?.intencion_cliente || `Gestión de ${normalized.subcategoria}`,
         confianza: conf,
         requiere_revision_humana: reqRev,
-        motivo_de_revision: reqRev ? 'Requiere validación humana por información insuficiente.' : undefined
+        motivo_de_revision: reqRev ? 'Requiere validación humana por información insuficiente.' : undefined,
+        producto_detectado: aiData?.producto_detectado || (rec.producto_original || 'TARJETA DE CRÉDITO'),
+        problema_principal: aiData?.problema_principal || aiData?.resumen_requerimiento || 'Gestión operativa de producto',
+        solicitud_cliente: aiData?.solicitud_cliente || aiData?.intencion_cliente || 'Atención de solicitud',
+        evidencia_textual: aiData?.evidencia_textual || rec.descripcion_original.slice(0, 100)
       });
 
       results[originalIdx] = analysis;
-      const hash = rec.hash_descripcion || hashText(rec.descripcion_original || `empty_${originalIdx}`);
+      const contextKey = `${rec.descripcion_original || ''}|${rec.submotivo_original || rec.resumen_original || ''}|${rec.producto_original || ''}`;
+      const hash = rec.hash_descripcion || hashText(contextKey);
       analysisCache.set(hash, analysis);
     });
 
@@ -220,7 +241,8 @@ ${JSON.stringify(formattedCases, null, 2)}
     const classification = classifyPQRDeterministic(rec);
     const analysis = buildPQRSAnalysis(rec, classification);
     results[originalIdx] = analysis;
-    const hash = rec.hash_descripcion || hashText(rec.descripcion_original || `empty_${originalIdx}`);
+    const contextKey = `${rec.descripcion_original || ''}|${rec.submotivo_original || rec.resumen_original || ''}|${rec.producto_original || ''}`;
+    const hash = rec.hash_descripcion || hashText(contextKey);
     analysisCache.set(hash, analysis);
   });
 

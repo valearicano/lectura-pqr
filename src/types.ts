@@ -12,13 +12,21 @@ export interface PQRSRecord {
 }
 
 export const CATEGORIAS_OPERATIVAS = [
-  'FRAUDES',
+  'SEGUROS',
+  'CUOTAS DE MANEJO',
   'PSE',
+  'GMF',
+  'EMBARGOS DE CUENTAS',
+  'FRAUDE / SUPLANTACIÓN',
+  'MOVIMIENTOS NO RECONOCIDOS',
+  'APLICACIÓN DE PAGO',
+  'COBRO DE INTERESES',
+  'ERROR EN APLICATIVOS',
+  'DERECHOS DE PETICIÓN',
   'CDT',
   'GT5',
-  'GMF',
+  'FRAUDES',
   'CUOTA DE MANEJO',
-  'SEGUROS',
   'TRANSFERENCIAS',
   'PAGOS / ABONOS',
   'CANALES DIGITALES',
@@ -30,18 +38,26 @@ export const CATEGORIAS_OPERATIVAS = [
   'EMBARGOS',
   'ACTUALIZACIÓN DE DATOS',
   'SERVICIO / ATENCIÓN',
+  'OTRAS SOLICITUDES',
   'OTRAS',
+  'INFORMACIÓN INSUFICIENTE',
   'REVISIÓN HUMANA'
 ] as const;
 
 export const CATEGORIAS_MAESTRAS_16 = [
-  'FRAUDES',
+  'SEGUROS',
+  'CUOTAS DE MANEJO',
   'PSE',
+  'GMF',
+  'EMBARGOS DE CUENTAS',
+  'FRAUDE / SUPLANTACIÓN',
+  'MOVIMIENTOS NO RECONOCIDOS',
+  'APLICACIÓN DE PAGO',
+  'COBRO DE INTERESES',
+  'ERROR EN APLICATIVOS',
+  'DERECHOS DE PETICIÓN',
   'CDT',
   'GT5',
-  'GMF',
-  'CUOTA DE MANEJO',
-  'SEGUROS',
   'TRANSFERENCIAS',
   'PAGOS / ABONOS',
   'CANALES DIGITALES',
@@ -54,6 +70,9 @@ export const CATEGORIAS_MAESTRAS_16 = [
   'OTRAS',
   'REVISIÓN HUMANA',
   // Aliases for historical backwards compatibility
+  'FRAUDES',
+  'CUOTA DE MANEJO',
+  'EMBARGOS',
   'GMF / 4X1000',
   'FRAUDE / NO RECONOCIDO',
   'FRAUDE / TRANSACCIÓN NO RECONOCIDA',
@@ -88,6 +107,8 @@ export interface PQRSAnalysis {
   sustento_clasificacion?: string;
   motivo_de_revision?: string;
   existe_inconsistencia?: 'SI' | 'NO';
+  evidencia_textual?: string;
+  producto_detectado?: string;
 
   // Classical & structured fields (compatible with all views)
   tema_principal: string;

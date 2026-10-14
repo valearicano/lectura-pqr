@@ -113,11 +113,14 @@ export const DEFAULT_CATALOG: CategoryItem[] = [
   {
     id: 'cat-tarjetas',
     nombre: 'TARJETAS',
-    descripcion: 'Gestión física de tarjetas débito/crédito, entrega de plástico, cupo y programas de millas',
+    descripcion: 'Gestión física y operativa de tarjetas débito y crédito: entrega de plástico, cupo, avances, compras y beneficios',
     activa: true,
     subcategorias: [
-      { id: 'sub-tar-1', nombre: 'PLÁSTICO Y BLOQUEO', activa: true, descripcion: 'Envío de plástico, entrega, deterioro, bloqueo y cupo' },
-      { id: 'sub-tar-2', nombre: 'MILLAS Y PROGRAMAS DE LEALTAD', activa: true, descripcion: 'Acumulación de millas, puntos y beneficios' }
+      { id: 'sub-tar-1', nombre: 'PLÁSTICO Y BLOQUEO', activa: true, descripcion: 'Envío de plástico, entrega, deterioro, reposición y bloqueo de tarjeta' },
+      { id: 'sub-tar-2', nombre: 'CUPO Y AVANCES', activa: true, descripcion: 'Solicitud de aumento de cupo, disponibilidad, avances y ajustes de límite' },
+      { id: 'sub-tar-3', nombre: 'COMPRAS Y DEVOLUCIONES', activa: true, descripcion: 'Devolución de compras pendientes, transacciones comerciales y cargos duplicados en datáfono' },
+      { id: 'sub-tar-4', nombre: 'DIFERIDOS Y FINANCIACIÓN', activa: true, descripcion: 'Compras diferidas a cuotas, rediferidos y plazo de financiación' },
+      { id: 'sub-tar-5', nombre: 'MILLAS Y PROGRAMAS DE LEALTAD', activa: true, descripcion: 'Acumulación de millas, puntos, canje y beneficios del programa de lealtad' }
     ]
   },
   {
