@@ -1,4 +1,5 @@
 import { PQRSAnalysis } from '../types';
+import { extractItauPaymentDetails } from './paymentExtractor';
 
 export interface PQRInputRecord {
   numero_expediente: string;
@@ -6,6 +7,7 @@ export interface PQRInputRecord {
   resumen_original?: string;
   submotivo_original?: string;
   producto_original?: string;
+  tipo_origen?: string;
   fecha_radicacion?: string;
   fecha_compromiso?: string;
   columnas_adicionales?: Record<string, any>;
@@ -26,6 +28,245 @@ export interface PQRClassificationResult {
   problema_principal: string;
   solicitud_cliente: string;
   evidencia_textual: string;
+  fecha_pago?: string;
+  valor_pago?: string;
+  pagos_detectados?: {
+    fecha?: string;
+    valor?: string;
+    descripcion?: string;
+    confianza?: string;
+  }[];
+}
+
+/**
+ * Extracts and normalizes TIPO ORIGEN from record or additional columns.
+ * Strictly adheres to the rule of not using description or summary to guess origin.
+ */
+export function extractTipoOrigen(record: PQRInputRecord): string {
+  if (record.tipo_origen && String(record.tipo_origen).trim().length > 0) {
+    return String(record.tipo_origen).trim();
+  }
+  if (record.columnas_adicionales) {
+    // Check direct known column keys first
+    const directKeys = [
+      'TIPO ORIGEN', 'tipo_origen', 'Tipo Origen', 'TIPO_ORIGEN', 'tipo origen',
+      'ORIGEN', 'origen', 'CANAL_ORIGEN', 'canal_origen', 'CANAL ORIGEN'
+    ];
+    for (const k of directKeys) {
+      if (record.columnas_adicionales[k] !== undefined && record.columnas_adicionales[k] !== null) {
+        const val = String(record.columnas_adicionales[k]).trim();
+        if (val.length > 0) return val;
+      }
+    }
+    // Search by normalized alphanumeric key
+    for (const [key, val] of Object.entries(record.columnas_adicionales)) {
+      const cleanKey = key.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+      if (cleanKey === 'tipoorigen' || cleanKey === 'origen' || cleanKey === 'canalorigen') {
+        if (val !== null && val !== undefined) {
+          const s = String(val).trim();
+          if (s.length > 0) return s;
+        }
+      }
+    }
+  }
+  return '';
+}
+
+/**
+ * Normalizes uppercase, lowercase, accents and spaces to compare against ITAU.
+ */
+export function isTipoOrigenItau(val?: any): boolean {
+  if (val === null || val === undefined) return false;
+  const clean = String(val)
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  return clean === 'ITAU';
+}
+
+/**
+ * Detects whether the detailed description corresponds to an unapplied, unreflected,
+ * pending, partial, rejected, delayed payment, transfer not credited or missing payment receipt.
+ */
+export function isPaymentUnappliedIssue(rawText: string): boolean {
+  if (!rawText || rawText.trim().length === 0) return false;
+  const lower = rawText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // 1. Where are my payments / where is the payment
+  if (
+    lower.includes('donde esta el pago') ||
+    lower.includes('donde estan los pagos') ||
+    lower.includes('donde esta mi pago') ||
+    lower.includes('donde estan mis pagos') ||
+    lower.includes('que paso con el pago') ||
+    lower.includes('que paso con mi pago') ||
+    lower.includes('donde quedaron los pagos') ||
+    lower.includes('donde quedo el pago')
+  ) {
+    return true;
+  }
+
+  // 2. Unreflected payments ("no veo el pago", "no veo mis pagos", "no se refleja", "no aparece reflejado", etc.)
+  const hasPaymentWord =
+    lower.includes('pago') ||
+    lower.includes('pagos') ||
+    lower.includes('pague') ||
+    lower.includes('pagado') ||
+    lower.includes('abono') ||
+    lower.includes('abonos') ||
+    lower.includes('abone') ||
+    lower.includes('transferencia') ||
+    lower.includes('transferi') ||
+    lower.includes('consignacion') ||
+    lower.includes('consigne') ||
+    lower.includes('debito') ||
+    lower.includes('debitado') ||
+    lower.includes('debitaron') ||
+    lower.includes('devitado') ||
+    lower.includes('descontaron') ||
+    lower.includes('descontado') ||
+    lower.includes('descuento');
+
+  const hasNotReflected =
+    lower.includes('no veo el pago') ||
+    lower.includes('no veo mis pagos') ||
+    lower.includes('no veo los pagos') ||
+    lower.includes('no veo reflejado') ||
+    lower.includes('no se ve reflejado') ||
+    lower.includes('no esta reflejado') ||
+    lower.includes('no se refleja') ||
+    lower.includes('sin reflejar') ||
+    lower.includes('pendiente de reflejar') ||
+    lower.includes('no aparece reflejado') ||
+    lower.includes('no aparece el pago') ||
+    lower.includes('no aparecen los pagos') ||
+    lower.includes('no aparece en el saldo') ||
+    lower.includes('no aparece en mi tarjeta') ||
+    lower.includes('no aparece en la tarjeta') ||
+    lower.includes('no aparece en el cupo') ||
+    lower.includes('no aparece abonada') ||
+    lower.includes('no aparece abonado') ||
+    lower.includes('no aparece abonadas') ||
+    lower.includes('no ha ingresado') ||
+    lower.includes('no ingresa el pago') ||
+    lower.includes('aun no aparece') ||
+    lower.includes('todavia no aparece') ||
+    lower.includes('sigue sin aparecer') ||
+    lower.includes('no se ve el abono');
+
+  if (hasPaymentWord && hasNotReflected) {
+    return true;
+  }
+
+  // 3. Not applied / pending application
+  const hasNotApplied =
+    lower.includes('no se ha aplicado') ||
+    lower.includes('no ha sido aplicado') ||
+    lower.includes('no aplicado') ||
+    lower.includes('no aplicada') ||
+    lower.includes('sin aplicar') ||
+    lower.includes('pendiente de aplicacion') ||
+    lower.includes('pendiente de aplicar') ||
+    lower.includes('sigue pendiente de aplicacion') ||
+    lower.includes('falta aplicar') ||
+    lower.includes('no aplicaron el pago') ||
+    lower.includes('no abonaron el pago') ||
+    lower.includes('aplicar el pago') ||
+    lower.includes('solicito aplicar') ||
+    lower.includes('solicitando aplicar') ||
+    lower.includes('aplicacion de pago') ||
+    lower.includes('aplicacion del pago') ||
+    lower.includes('aplicar pago');
+
+  if (hasPaymentWord && hasNotApplied) {
+    return true;
+  }
+
+  // 4. Rejected / delayed payment
+  const hasRejectionOrDelay =
+    lower.includes('pago rechazado') ||
+    lower.includes('pago fue rechazado') ||
+    lower.includes('pago quedo pendiente') ||
+    lower.includes('demora en su aplicacion') ||
+    lower.includes('demora en la aplicacion') ||
+    lower.includes('demora en el pago') ||
+    lower.includes('demora del pago') ||
+    lower.includes('retraso en el pago') ||
+    lower.includes('retraso en la aplicacion') ||
+    lower.includes('tardanza en el pago');
+
+  if (hasRejectionOrDelay) {
+    return true;
+  }
+
+  // 5. Transfer not credited ("Realicé una transferencia y no aparece abonada")
+  if (
+    lower.includes('transferencia') &&
+    (lower.includes('no aparece abonada') ||
+     lower.includes('no abonada') ||
+     lower.includes('no acreditada') ||
+     lower.includes('no se ve reflejada') ||
+     lower.includes('no ha llegado') ||
+     lower.includes('no aparece en la tarjeta') ||
+     lower.includes('no aparece'))
+  ) {
+    return true;
+  }
+
+  // 6. Discounted/debited from account but not reflected or applied to card/obligation
+  // "Me descontaron el dinero, pero no se refleja en mi tarjeta"
+  // "El pago aparece debitado de mi cuenta, pero no aplicado a la obligación"
+  if (
+    (lower.includes('descontaron') || lower.includes('descuento') || lower.includes('debitado') || lower.includes('debitaron') || lower.includes('devitado')) &&
+    (lower.includes('no se refleja') ||
+     lower.includes('no aparece') ||
+     lower.includes('no aplicado') ||
+     lower.includes('no aplicada') ||
+     lower.includes('sin aplicar') ||
+     lower.includes('pendiente') ||
+     lower.includes('a la obligacion'))
+  ) {
+    return true;
+  }
+
+  // 7. Partial / duplicated / multiple payments: "Solo aparece uno de los dos pagos que realicé", "dos pagos", "2 pagos"
+  if (
+    lower.includes('solo aparece uno de los') ||
+    lower.includes('solo uno de los dos') ||
+    lower.includes('solo uno de los pagos') ||
+    lower.includes('uno de los dos pagos') ||
+    lower.includes('dos pagos') ||
+    lower.includes('2 pagos') ||
+    lower.includes('ambos pagos') ||
+    lower.includes('pago duplicado') ||
+    lower.includes('doble pago') ||
+    lower.includes('cobro duplicado del pago')
+  ) {
+    return true;
+  }
+
+  // 8. Missing payment receipt / record: "No encuentro el comprobante o el registro del pago realizado"
+  if (
+    (lower.includes('no encuentro') || lower.includes('no tengo') || lower.includes('no aparece') || lower.includes('donde esta')) &&
+    (lower.includes('comprobante') || lower.includes('registro del pago') || lower.includes('soporte del pago') || lower.includes('comprobante de pago'))
+  ) {
+    return true;
+  }
+
+  // 9. Cross-month payment reflection issues: "Pagué en septiembre y todavía no aparece en octubre"
+  const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'setiembre', 'octubre', 'noviembre', 'diciembre'];
+  const hasMonth = months.some(m => lower.includes(m));
+  if (hasMonth) {
+    if (
+      (lower.includes('pague') || lower.includes('pago') || lower.includes('pagos')) &&
+      (lower.includes('no veo') || lower.includes('no aparece') || lower.includes('todavia') || lower.includes('aun') || lower.includes('refleja'))
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -152,6 +393,26 @@ function generateConciseSummary(
 export function normalizeCategoryName(raw: string): { categoria_principal: string; subcategoria: string } {
   if (!raw) return { categoria_principal: 'OTRAS', subcategoria: 'CASOS ATÍPICOS' };
   const clean = raw.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // 0. PAGO A ITAU
+  if (clean.includes('PAGO A ITAU') || clean.includes('PAGO ITAU')) {
+    if (clean.includes('TRANSFERENCIA') || clean.includes('ABONADA')) {
+      return { categoria_principal: 'PAGO A ITAU', subcategoria: 'TRANSFERENCIA NO ABONADA' };
+    }
+    if (clean.includes('COMPROBANTE') || clean.includes('REGISTRO') || clean.includes('SOPORTE')) {
+      return { categoria_principal: 'PAGO A ITAU', subcategoria: 'COMPROBANTE NO ENCONTRADO' };
+    }
+    if (clean.includes('DEMORA') || clean.includes('PENDIENTE') || clean.includes('RECHAZ')) {
+      return { categoria_principal: 'PAGO A ITAU', subcategoria: 'PAGO PENDIENTE / DEMORA' };
+    }
+    if (clean.includes('DUPLICAD') || clean.includes('PARCIAL') || clean.includes('UNO DE LOS DOS')) {
+      return { categoria_principal: 'PAGO A ITAU', subcategoria: 'PAGO DUPLICADO / PARCIAL' };
+    }
+    if (clean.includes('APLICACION') || clean.includes('APLICADO')) {
+      return { categoria_principal: 'PAGO A ITAU', subcategoria: 'APLICACIÓN DE PAGO' };
+    }
+    return { categoria_principal: 'PAGO A ITAU', subcategoria: 'PAGO NO REFLEJADO' };
+  }
 
   // 1. FRAUDES
   if (clean.includes('FRAUDE') || clean.includes('NO RECONOCID') || clean.includes('DESCONOCID') || clean.includes('SUPLANT') || clean.includes('CLONAC')) {
@@ -454,9 +715,10 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   // belong to SEGUROS as defined by business rules.
   // =========================================================================
   const isInsuranceDispute = lower.includes('seguro') || lower.includes('poliza');
+  const isCuotaManejoDispute = lower.includes('cuota de manejo') || lower.includes('cuotas de manejo') || lower.includes('cuota manejo');
 
   const isFraudManifestation =
-    !isInsuranceDispute && (
+    !isInsuranceDispute && !isCuotaManejoDispute && (
       lower.includes('no reconozco') ||
       lower.includes('no reconoce') ||
       lower.includes('no reconocid') ||
@@ -575,6 +837,97 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
       problema_principal: problema,
       solicitud_cliente: 'Acreditación, confirmación o soporte de pago PSE',
       evidencia_textual: rawText.slice(0, 100)
+    };
+  }
+
+  // =========================================================================
+  // REGLA OBLIGATORIA: PAGO A ITAU (FILTRO OBLIGATORIO TIPO ORIGEN = ITAU)
+  // Procesa esta regla exclusivamente para expedientes cuya columna TIPO ORIGEN
+  // corresponda a ITAU (normalizando mayúsculas, minúsculas y espacios).
+  // No utiliza la descripción ni el resumen para saltarse el filtro.
+  // No cambia la clasificación de expedientes cuyo TIPO ORIGEN sea diferente de ITAU.
+  // =========================================================================
+  const tipoOrigenVal = extractTipoOrigen(record);
+  const isItau = isTipoOrigenItau(tipoOrigenVal);
+
+  if (isItau && isPaymentUnappliedIssue(rawText)) {
+    let sub = 'PAGO NO REFLEJADO';
+    let intencion = 'Acreditación y reflejo de pago realizado en Itaú';
+    let problema = 'Pago realizado a Itaú no reflejado en el saldo o tarjeta';
+    let solicitud = 'Aplicación y reflejo oportuno del pago en la obligación';
+
+    if (
+      lower.includes('transferencia') &&
+      (lower.includes('no aparece abonada') || lower.includes('no abonada') || lower.includes('no acreditada') || lower.includes('no se ve reflejada') || lower.includes('no aparece'))
+    ) {
+      sub = 'TRANSFERENCIA NO ABONADA';
+      intencion = 'Acreditación de transferencia realizada a Itaú';
+      problema = 'Transferencia enviada que no aparece abonada a la cuenta o tarjeta';
+      solicitud = 'Abonar la transferencia realizada en la obligación';
+    } else if (
+      (lower.includes('no encuentro') || lower.includes('no tengo') || lower.includes('solicito')) &&
+      (lower.includes('comprobante') || lower.includes('registro') || lower.includes('soporte'))
+    ) {
+      sub = 'COMPROBANTE NO ENCONTRADO';
+      intencion = 'Ubicación y envío de comprobante o registro del pago realizado';
+      problema = 'Inconvenientes para ubicar o visualizar comprobante del pago';
+      solicitud = 'Envío de soporte y comprobante del pago realizado';
+    } else if (
+      lower.includes('pago rechazado') ||
+      lower.includes('fue rechazado') ||
+      lower.includes('demora en su aplicacion') ||
+      lower.includes('demora en la aplicacion') ||
+      lower.includes('demora del pago') ||
+      lower.includes('retraso en el pago') ||
+      lower.includes('tardanza en el pago')
+    ) {
+      sub = 'PAGO PENDIENTE / DEMORA';
+      intencion = 'Solución a pago rechazado o demora en aplicación a Itaú';
+      problema = 'Pago rechazado o con demora excesiva en su aplicación';
+      solicitud = 'Aclaración de motivo de demora o rechazo y aplicación del pago';
+    } else if (
+      lower.includes('solo aparece uno') ||
+      lower.includes('uno de los dos') ||
+      lower.includes('pago duplicado') ||
+      lower.includes('doble pago')
+    ) {
+      sub = 'PAGO DUPLICADO / PARCIAL';
+      intencion = 'Revisión de pagos múltiples o aplicación parcial a Itaú';
+      problema = 'Solo aparece uno de los pagos o cobro doble registrado';
+      solicitud = 'Aplicar todos los pagos realizados o corregir duplicidad';
+    } else if (
+      lower.includes('no se ha aplicado') ||
+      lower.includes('no ha sido aplicado') ||
+      lower.includes('no aplicado') ||
+      lower.includes('no aplicada') ||
+      lower.includes('sin aplicar') ||
+      lower.includes('pendiente de aplicacion') ||
+      lower.includes('pendiente de aplicar') ||
+      lower.includes('a la obligacion')
+    ) {
+      sub = 'APLICACIÓN DE PAGO';
+      intencion = 'Aplicación efectiva de pago pendiente a la obligación Itaú';
+      problema = 'Pago realizado debitado o pendiente de aplicar a la obligación';
+      solicitud = 'Aplicar el valor pagado a la obligación pendiente';
+    }
+
+    const paymentInfo = extractItauPaymentDetails(rawText, tipoOrigenVal, 'PAGO A ITAU');
+
+    return {
+      expediente,
+      categoria_principal: 'PAGO A ITAU',
+      subcategoria: sub,
+      resumen_requerimiento: generateConciseSummary(rawText, 'PAGO A ITAU', sub, detectedProduct, `Cliente Itaú reporta inconveniente con pago realizado no aplicado o no reflejado.`),
+      intencion_cliente: intencion,
+      confianza: 98,
+      requiere_revision_humana: false,
+      producto_detectado: detectedProduct !== 'NO ESPECIFICADO' ? detectedProduct : 'TARJETA DE CRÉDITO',
+      problema_principal: problema,
+      solicitud_cliente: solicitud,
+      evidencia_textual: rawText.slice(0, 100),
+      fecha_pago: paymentInfo.fecha_pago,
+      valor_pago: paymentInfo.valor_pago,
+      pagos_detectados: paymentInfo.pagos
     };
   }
 
@@ -1158,7 +1511,7 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   }
 
   // 8.16 TRANSFERENCIAS
-  if (lower.includes('transferencia') || lower.includes('transferir') || lower.includes('ach') || lower.includes('bre-b') || lower.includes('giro')) {
+  if (lower.includes('transfer') || lower.includes('ach') || lower.includes('bre-b') || lower.includes('giro')) {
     return {
       expediente,
       categoria_principal: 'TRANSFERENCIAS',
@@ -1175,7 +1528,7 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   }
 
   // 8.17 PAGOS / ABONOS GENERALES
-  if (lower.includes('pago') || lower.includes('abono') || lower.includes('consignacion') || lower.includes('recaudo')) {
+  if (lower.includes('pago') || lower.includes('pague') || lower.includes('pagad') || lower.includes('abono') || lower.includes('abone') || lower.includes('consignacion') || lower.includes('recaudo')) {
     return {
       expediente,
       categoria_principal: 'PAGOS / ABONOS',
@@ -1354,6 +1707,30 @@ export function validateClassificationConsistency(
     };
   }
 
+  // 4. Contradiction: PAGO A ITAU assigned without TIPO ORIGEN = ITAU
+  const tipoOrigenVal = extractTipoOrigen(record);
+  const isItau = isTipoOrigenItau(tipoOrigenVal);
+
+  if (result.categoria_principal === 'PAGO A ITAU' && !isItau) {
+    return {
+      ...result,
+      categoria_principal: 'PAGOS / ABONOS',
+      subcategoria: 'APLICACIÓN DE PAGO',
+      existe_inconsistencia: 'SI',
+      motivo_inconsistencia: 'La categoría PAGO A ITAU está reservada exclusivamente para expedientes cuya columna TIPO ORIGEN corresponda a ITAU.'
+    };
+  }
+
+  // 5. Contradiction: Expediente with TIPO ORIGEN = ITAU and payment unapplied issue not assigned PAGO A ITAU
+  if (isItau && isPaymentUnappliedIssue(rawText) && result.categoria_principal !== 'PAGO A ITAU' && result.categoria_principal !== 'FRAUDES' && result.categoria_principal !== 'PSE') {
+    const fixedItau = classifyPQRDeterministic(record);
+    return {
+      ...fixedItau,
+      existe_inconsistencia: 'SI',
+      motivo_inconsistencia: 'Se corrigió categoría: expediente con TIPO ORIGEN = ITAU y reporte de pago no aplicado/reflejado asignado a PAGO A ITAU.'
+    };
+  }
+
   return result;
 }
 
@@ -1406,7 +1783,10 @@ export function buildPQRSAnalysis(
     modelo_ia: 'gemini-3.8-flash',
     version_prompt: 'v4.1.0-tarjetas-credito-mejoradas',
     fecha_analisis: new Date().toISOString(),
-    estado_revision: 'PENDIENTE'
+    estado_revision: 'PENDIENTE',
+    fecha_pago: validated.fecha_pago || '',
+    valor_pago: validated.valor_pago || '',
+    pagos_detectados: validated.pagos_detectados || []
   };
 }
 

@@ -74,7 +74,7 @@ export function exportEnrichedExcel(
       row['NO_SS'] = r.numero_expediente;
     }
 
-    // 2. Append standard master classification columns (Section 16 simple format)
+    // 2. Append required master columns and extracted payment details
     const a = r.analisis;
     const catPrincipal = a?.categoria_principal || a?.categoria || 'Sin procesar';
     const subcat = a?.subcategoria || 'General';
@@ -82,6 +82,16 @@ export function exportEnrichedExcel(
     const conf = a?.confianza !== undefined ? a.confianza : 90;
     const nivelConfianza = a?.nivel_confianza || (conf >= 85 ? 'Alta' : conf >= 70 ? 'Media' : 'Baja');
     const reqRev = a?.requiere_revision_humana === 'SI' || a?.requiere_revision || catPrincipal === 'REVISIÓN HUMANA' ? 'SI' : 'NO';
+
+    row['CATEGORIA'] = catPrincipal;
+    row['FECHA DEL PAGO'] = a?.fecha_pago || '';
+    row['VALOR DEL PAGO'] = a?.valor_pago || '';
+
+    // If multiple payments are mentioned in the same case, preserve them in linked columns
+    if (a?.pagos_detectados && a.pagos_detectados.length > 1) {
+      row['FECHA DEL PAGO 2'] = a.pagos_detectados[1]?.fecha || '';
+      row['VALOR DEL PAGO 2'] = a.pagos_detectados[1]?.valor || '';
+    }
 
     row['ID_SOLICITUD_ORIGINAL'] = r.numero_expediente;
     row['CATEGORIA_PRINCIPAL'] = catPrincipal;
@@ -100,6 +110,54 @@ export function exportEnrichedExcel(
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'PQRS Analizadas');
 
+  XLSX.writeFile(workbook, filename);
+}
+
+/**
+ * Generates and downloads the dedicated Excel file for Itaú Payments with extracted payment details.
+ */
+export function exportItauPaymentsExcel(
+  records: EnrichedPQRSRecord[],
+  filename = 'PQRS_ITAU_PAGOS_EXTRAIDOS.xlsx'
+): void {
+  const exportRows = records.map(r => {
+    const row: Record<string, any> = {};
+
+    // 1. Maintain all original columns exactly as uploaded
+    if (r.columnas_adicionales && Object.keys(r.columnas_adicionales).length > 0) {
+      for (const [key, val] of Object.entries(r.columnas_adicionales)) {
+        row[key] = val;
+      }
+    } else {
+      row['NO_SS'] = r.numero_expediente;
+      row['TIPO ORIGEN'] = r.columnas_adicionales?.['TIPO ORIGEN'] || 'ITAU';
+      row['SUBMOTIVO'] = r.resumen_original;
+      row['DESC_DETALLADA'] = r.descripcion_original;
+    }
+
+    if (!('NO_SS' in row) && !('no_ss' in row)) {
+      row['NO_SS'] = r.numero_expediente;
+    }
+
+    const a = r.analisis;
+    const cat = a?.categoria_principal || a?.categoria || 'Sin procesar';
+
+    row['CATEGORIA'] = cat;
+    row['FECHA DEL PAGO'] = a?.fecha_pago || '';
+    row['VALOR DEL PAGO'] = a?.valor_pago || '';
+
+    // Multiple payments columns if present
+    if (a?.pagos_detectados && a.pagos_detectados.length > 1) {
+      row['FECHA DEL PAGO 2'] = a.pagos_detectados[1]?.fecha || '';
+      row['VALOR DEL PAGO 2'] = a.pagos_detectados[1]?.valor || '';
+    }
+
+    return row;
+  });
+
+  const worksheet = XLSX.utils.json_to_sheet(exportRows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Base Original + Pagos Itaú');
   XLSX.writeFile(workbook, filename);
 }
 

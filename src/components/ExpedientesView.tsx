@@ -14,7 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { EnrichedPQRSRecord, CATEGORIAS_OFICIALES_16 } from '../types';
-import { exportEnrichedExcel, exportCategoriesSummaryExcel } from '../services/excelService';
+import { exportEnrichedExcel, exportCategoriesSummaryExcel, exportItauPaymentsExcel } from '../services/excelService';
 
 interface ExpedientesViewProps {
   records: EnrichedPQRSRecord[];
@@ -108,7 +108,16 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
             className="px-3 py-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
           >
             <Download className="w-3.5 h-3.5 mr-1.5" />
-            Descargar Excel Completo
+            Excel Completo
+          </button>
+          <button
+            onClick={() => exportItauPaymentsExcel(records, 'BASE_ORIGINAL_PAGOS_ITAU.xlsx')}
+            disabled={records.length === 0}
+            className="px-3 py-2 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
+            title="Genera archivo Excel descargable con la base original y las columnas: CATEGORIA, FECHA DEL PAGO, VALOR DEL PAGO"
+          >
+            <Download className="w-3.5 h-3.5 mr-1.5" />
+            Base + Pagos Itaú
           </button>
           <button
             onClick={() => exportEnrichedExcel(records, 'PQRS_REQUIEREN_REVISION.xlsx', true)}
@@ -116,7 +125,7 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
             className="px-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
           >
             <AlertCircle className="w-3.5 h-3.5 mr-1.5" />
-            Solo en Revisión
+            Solo Revisión
           </button>
           <button
             onClick={() => exportCategoriesSummaryExcel(records)}
@@ -264,6 +273,8 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                   <th className="py-3 px-3.5">Expediente (NO_SS)</th>
                   <th className="py-3 px-3.5">Categoría Principal</th>
                   <th className="py-3 px-3.5">Subcategoría</th>
+                  <th className="py-3 px-3.5 whitespace-nowrap">Fecha Pago</th>
+                  <th className="py-3 px-3.5 whitespace-nowrap">Valor Pago</th>
                   <th className="py-3 px-3.5">Resumen Requerimiento (Máx 20 Palabras)</th>
                   <th className="py-3 px-3.5 text-center">Confianza</th>
                   <th className="py-3 px-3.5 text-center">Revisión Humana</th>
@@ -296,6 +307,24 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                         <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-800 border border-slate-200 inline-block">
                           {subcat}
                         </span>
+                      </td>
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        {a?.fecha_pago ? (
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 inline-flex items-center">
+                            📅 {a.fecha_pago}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        {a?.valor_pago ? (
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center">
+                            💰 {a.valor_pago}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
                       </td>
                       <td className="py-3 px-3.5 text-slate-800 max-w-md">
                         <p className="font-medium text-slate-900 truncate" title={resumenReq}>
@@ -498,10 +527,54 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
   subcategoria: activeRecord.analisis.subcategoria,
   resumen_requerimiento: activeRecord.analisis.resumen_requerimiento || activeRecord.analisis.resumen_normalizado,
   confianza: activeRecord.analisis.confianza,
-  requiere_revision_humana: Boolean(activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision)
+  requiere_revision_humana: Boolean(activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision),
+  ...(activeRecord.analisis.fecha_pago ? { fecha_del_pago: activeRecord.analisis.fecha_pago } : {}),
+  ...(activeRecord.analisis.valor_pago ? { valor_del_pago: activeRecord.analisis.valor_pago } : {})
 }, null, 2)}
                     </pre>
                   </div>
+
+                  {/* Extracción de Datos de Pago Itaú */}
+                  {(activeRecord.analisis.fecha_pago || activeRecord.analisis.valor_pago || (activeRecord.analisis.pagos_detectados && activeRecord.analisis.pagos_detectados.length > 0)) && (
+                    <div className="p-3 bg-white/10 rounded-lg border border-white/20 text-xs text-white space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-emerald-300 flex items-center">
+                          💳 DATOS DE PAGO EXTRAÍDOS (ITAU)
+                        </span>
+                        {activeRecord.analisis.pagos_detectados && activeRecord.analisis.pagos_detectados.length > 1 && (
+                          <span className="text-[10px] bg-emerald-500/30 text-emerald-200 px-2 py-0.5 rounded font-semibold border border-emerald-400/30">
+                            {activeRecord.analisis.pagos_detectados.length} Pagos Identificados
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <div className="p-2 bg-slate-900/40 rounded border border-white/10">
+                          <span className="text-[10px] text-blue-200 block font-semibold">FECHA DEL PAGO:</span>
+                          <span className="font-bold text-sm text-white">
+                            {activeRecord.analisis.fecha_pago || 'No especificada'}
+                          </span>
+                        </div>
+                        <div className="p-2 bg-slate-900/40 rounded border border-white/10">
+                          <span className="text-[10px] text-blue-200 block font-semibold">VALOR DEL PAGO:</span>
+                          <span className="font-bold text-sm text-emerald-300">
+                            {activeRecord.analisis.valor_pago || 'No especificado'}
+                          </span>
+                        </div>
+                      </div>
+                      {activeRecord.analisis.pagos_detectados && activeRecord.analisis.pagos_detectados.length > 1 && (
+                        <div className="pt-1.5 border-t border-white/10 text-[11px] space-y-1">
+                          <span className="text-blue-200 block font-medium">Detalle de pagos individuales vinculados:</span>
+                          {activeRecord.analisis.pagos_detectados.map((p, idx) => (
+                            <div key={idx} className="flex items-center justify-between bg-white/5 px-2 py-1 rounded">
+                              <span className="font-bold text-white">Pago #{idx + 1}:</span>
+                              <span className="text-slate-300">Fecha: <strong className="text-white">{p.fecha || 'N/A'}</strong></span>
+                              <span className="text-slate-300">Valor: <strong className="text-emerald-300">{p.valor || 'N/A'}</strong></span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Grid con Producto, Tipo PQR, Motivo, Submotivo */}

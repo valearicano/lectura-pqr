@@ -2,6 +2,20 @@ import { CategoryItem } from '../types';
 
 export const DEFAULT_CATALOG: CategoryItem[] = [
   {
+    id: 'cat-pago-itau',
+    nombre: 'PAGO A ITAU',
+    descripcion: 'Pagos realizados a Itaú no reflejados, no aplicados, pendientes, incompletos, demorados o rechazados (Exclusivo para expedientes con TIPO ORIGEN = ITAU)',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-ita-1', nombre: 'PAGO NO REFLEJADO', activa: true, descripcion: 'Pagos realizados por el cliente que no aparecen reflejados en el saldo o tarjeta' },
+      { id: 'sub-ita-2', nombre: 'APLICACIÓN DE PAGO', activa: true, descripcion: 'Pagos debitados o consignados pendientes o no aplicados a la obligación' },
+      { id: 'sub-ita-3', nombre: 'TRANSFERENCIA NO ABONADA', activa: true, descripcion: 'Transferencias enviadas que no se acreditan en la cuenta o tarjeta Itaú' },
+      { id: 'sub-ita-4', nombre: 'PAGO PENDIENTE / DEMORA', activa: true, descripcion: 'Pagos en proceso con demora excesiva, estado retenido o rechazado' },
+      { id: 'sub-ita-5', nombre: 'COMPROBANTE NO ENCONTRADO', activa: true, descripcion: 'Inconvenientes para ubicar el registro, comprobante o soporte del pago realizado' },
+      { id: 'sub-ita-6', nombre: 'PAGO DUPLICADO / PARCIAL', activa: true, descripcion: 'Solo aparece reflejado uno de los pagos o se presentó débito doble' }
+    ]
+  },
+  {
     id: 'cat-fraudes',
     nombre: 'FRAUDES',
     descripcion: 'Manifestación del cliente de no reconocer operaciones, débitos, compras, transferencias o productos, así como clonación, suplantación o hurto (Prioridad 1)',

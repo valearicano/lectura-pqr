@@ -54,11 +54,18 @@ export function detectColumns(headers: string[]): ColumnDetectionResult {
     'fecha_vencimiento', 'fecha vencimiento'
   ];
 
+  // Match TIPO ORIGEN
+  const tipoOrigenKeywords = [
+    'tipo origen', 'tipo_origen', 'tipoorigen', 'tipo de origen', 'tipo_de_origen',
+    'canal_origen', 'canal origen', 'origen', 'medio_origen', 'fuente'
+  ];
+
   let detectedExpediente = '';
   let detectedResumen = '';
   let detectedDescripcion = '';
   let detectedSubmotivo = '';
   let detectedProducto = '';
+  let detectedTipoOrigen = '';
   let detectedFechaRadicacion = '';
   let detectedFechaCompromiso = '';
 
@@ -145,6 +152,24 @@ export function detectColumns(headers: string[]): ColumnDetectionResult {
     }
   }
 
+  // 7. Match Tipo Origen (TIPO ORIGEN)
+  for (const kw of tipoOrigenKeywords) {
+    const kwClean = kw.replace(/[^a-z0-9]/g, '');
+    const match = normalizedHeaders.find(h => 
+      (h.clean === kw || h.rawNoSpecial === kwClean) && 
+      h.original !== detectedExpediente && 
+      h.original !== detectedDescripcion && 
+      h.original !== detectedSubmotivo &&
+      h.original !== detectedProducto &&
+      h.original !== detectedFechaRadicacion &&
+      h.original !== detectedFechaCompromiso
+    );
+    if (match) {
+      detectedTipoOrigen = match.original;
+      break;
+    }
+  }
+
   // Fallbacks if not detected
   if (!detectedExpediente && headers.length > 0) {
     detectedExpediente = headers[0];
@@ -154,6 +179,7 @@ export function detectColumns(headers: string[]): ColumnDetectionResult {
       h !== detectedExpediente && 
       h !== detectedSubmotivo && 
       h !== detectedProducto &&
+      h !== detectedTipoOrigen &&
       h !== detectedFechaRadicacion &&
       h !== detectedFechaCompromiso
     );
@@ -169,6 +195,7 @@ export function detectColumns(headers: string[]): ColumnDetectionResult {
     descripcionCol: detectedDescripcion,
     submotivoCol: detectedSubmotivo,
     productoCol: detectedProducto,
+    tipoOrigenCol: detectedTipoOrigen,
     fechaRadicacionCol: detectedFechaRadicacion,
     fechaCompromisoCol: detectedFechaCompromiso,
     todasLasColumnas: headers,
@@ -178,6 +205,7 @@ export function detectColumns(headers: string[]): ColumnDetectionResult {
       descripcion: Boolean(detectedDescripcion),
       submotivo: Boolean(detectedSubmotivo),
       producto: Boolean(detectedProducto),
+      tipoOrigen: Boolean(detectedTipoOrigen),
       fechaRadicacion: Boolean(detectedFechaRadicacion),
       fechaCompromiso: Boolean(detectedFechaCompromiso)
     }

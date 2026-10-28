@@ -77,7 +77,7 @@ export function validateRecords(
       descripcion_normalizada: descNormalizada,
       archivo_origen: archivoNombre,
       fecha_carga: new Date().toISOString(),
-      hash_descripcion: hashText(`${descNormalizada}|${resumenStr}|${columnasAdicionales.SUBMOTIVO || ''}|${columnasAdicionales.NOMBRE_PRODUCTO || ''}` || `empty_${filaNum}`),
+      hash_descripcion: hashText(`${descNormalizada}|${resumenStr}|${columnasAdicionales.SUBMOTIVO || ''}|${columnasAdicionales.NOMBRE_PRODUCTO || ''}|${columnasAdicionales['TIPO ORIGEN'] || columnasAdicionales['tipo_origen'] || columnasAdicionales['ORIGEN'] || ''}` || `empty_${filaNum}`),
       columnas_adicionales: columnasAdicionales,
       estado_procesamiento: 'PENDIENTE'
     });

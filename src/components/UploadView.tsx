@@ -78,6 +78,7 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
   const handleLoadSample = () => {
     const sampleHeaders = [
       'NO_SS',
+      'TIPO ORIGEN',
       'SUBMOTIVO',
       'NOMBRE_PRODUCTO',
       'FECHA_RADICACION',
@@ -86,6 +87,7 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
     ];
     const sampleRows = SAMPLE_PQRS_DATA.map((item, idx) => ({
       NO_SS: item.numero_expediente,
+      'TIPO ORIGEN': (idx % 2 === 0) ? 'ITAU' : 'BANCOLOMBIA',
       SUBMOTIVO: item.submotivo || item.resumen_original,
       NOMBRE_PRODUCTO: item.producto || 'Producto Bancario',
       FECHA_RADICACION: '2026-09-15',
@@ -183,13 +185,21 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
                            r.columnas_adicionales?.['PRODUCTO'] ||
                            r.columnas_adicionales?.['producto'];
 
+          const tipoOrigen = r.columnas_adicionales?.['TIPO ORIGEN'] ||
+                             r.columnas_adicionales?.['tipo_origen'] ||
+                             r.columnas_adicionales?.['Tipo Origen'] ||
+                             r.columnas_adicionales?.['TIPO_ORIGEN'] ||
+                             r.columnas_adicionales?.['ORIGEN'];
+
           return {
             numero_expediente: r.numero_expediente,
             resumen_original: r.resumen_original,
             descripcion_original: r.descripcion_original, // Maintain original description including abbreviations/informal language
             submotivo_original: submotivo,
             producto_original: producto,
-            hash_descripcion: r.hash_descripcion
+            tipo_origen: tipoOrigen,
+            hash_descripcion: r.hash_descripcion,
+            columnas_adicionales: r.columnas_adicionales
           };
         });
 
@@ -221,21 +231,23 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
                               rec.columnas_adicionales?.['submotivo'] ||
                               rec.resumen_original;
             const producto = rec.columnas_adicionales?.['NOMBRE_PRODUCTO'] ||
-                             rec.columnas_adicionales?.['nombre_producto'];
-            const classification = classifyPQRDeterministic({
+                              rec.columnas_adicionales?.['nombre_producto'];
+            const tipoOrigen = rec.columnas_adicionales?.['TIPO ORIGEN'] ||
+                               rec.columnas_adicionales?.['tipo_origen'] ||
+                               rec.columnas_adicionales?.['Tipo Origen'] ||
+                               rec.columnas_adicionales?.['TIPO_ORIGEN'] ||
+                               rec.columnas_adicionales?.['ORIGEN'];
+            const recordInput = {
               numero_expediente: rec.numero_expediente,
               descripcion_original: rec.descripcion_original,
               resumen_original: rec.resumen_original,
               submotivo_original: submotivo,
-              producto_original: producto
-            });
-            const analysis = buildPQRSAnalysis({
-              numero_expediente: rec.numero_expediente,
-              descripcion_original: rec.descripcion_original,
-              resumen_original: rec.resumen_original,
-              submotivo_original: submotivo,
-              producto_original: producto
-            }, classification);
+              producto_original: producto,
+              tipo_origen: tipoOrigen,
+              columnas_adicionales: rec.columnas_adicionales
+            };
+            const classification = classifyPQRDeterministic(recordInput);
+            const analysis = buildPQRSAnalysis(recordInput, classification);
 
             analyzedRecords.push({
               ...rec,

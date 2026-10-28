@@ -12,6 +12,7 @@ export interface PQRSRecord {
 }
 
 export const CATEGORIAS_OPERATIVAS = [
+  'PAGO A ITAU',
   'SEGUROS',
   'CUOTAS DE MANEJO',
   'PSE',
@@ -45,6 +46,7 @@ export const CATEGORIAS_OPERATIVAS = [
 ] as const;
 
 export const CATEGORIAS_MAESTRAS_16 = [
+  'PAGO A ITAU',
   'SEGUROS',
   'CUOTAS DE MANEJO',
   'PSE',
@@ -109,6 +111,16 @@ export interface PQRSAnalysis {
   existe_inconsistencia?: 'SI' | 'NO';
   evidencia_textual?: string;
   producto_detectado?: string;
+
+  // Extraction of payment dates and values (ITAU)
+  fecha_pago?: string;
+  valor_pago?: string;
+  pagos_detectados?: {
+    fecha?: string;
+    valor?: string;
+    descripcion?: string;
+    confianza?: string;
+  }[];
 
   // Classical & structured fields (compatible with all views)
   tema_principal: string;
@@ -187,6 +199,7 @@ export interface ColumnDetectionResult {
   descripcionCol: string;
   submotivoCol?: string;
   productoCol?: string;
+  tipoOrigenCol?: string;
   fechaRadicacionCol?: string;
   fechaCompromisoCol?: string;
   todasLasColumnas: string[];
@@ -196,6 +209,7 @@ export interface ColumnDetectionResult {
     descripcion: boolean;
     submotivo?: boolean;
     producto?: boolean;
+    tipoOrigen?: boolean;
     fechaRadicacion?: boolean;
     fechaCompromiso?: boolean;
   };

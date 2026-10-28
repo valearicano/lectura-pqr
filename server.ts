@@ -7,6 +7,7 @@ import { analyzePQRSBatch, getEmbedding } from './server/geminiService';
 import { testSupabaseConnection, saveRecordsToSupabase } from './server/supabaseService';
 import { DEFAULT_CATALOG, getCatalogSummary } from './src/services/catalog';
 import { CategoryItem } from './src/types';
+import { MANDATORY_TEST_SUITE } from './test/mandatoryCases.test';
 
 dotenv.config();
 
@@ -118,172 +119,22 @@ async function startServer() {
     res.json(result);
   });
 
-  // 6. Mandatory Test Cases runner (16 Categorías Oficiales y Regla de Prioridad)
+  // 6. Mandatory Test Cases runner (41 Casos de Negocio, ITAU y Prioridades)
   app.get('/api/test-cases', async (req, res) => {
-    const mandatoryTestCases = [
-      {
-        numero_expediente: 'TEST-001',
-        resumen_original: 'Pago no aplicado tarjeta',
-        descripcion_original: 'Realicé el pago de mi tarjeta de crédito el día de ayer y aún no se ve reflejado en el saldo.',
-        esperado: 'PAGOS / ABONOS',
-        subcategoria_esperada: 'APLICACIÓN DE PAGO',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
+    const mandatoryTestCases = MANDATORY_TEST_SUITE.map(tc => ({
+      numero_expediente: tc.expediente,
+      resumen_original: tc.submotivo || tc.nombre,
+      descripcion_original: tc.descripcion,
+      producto_original: tc.producto,
+      tipo_origen: tc.tipo_origen,
+      columnas_adicionales: {
+        'TIPO ORIGEN': tc.tipo_origen
       },
-      {
-        numero_expediente: 'TEST-002',
-        resumen_original: 'Pago duplicado tarjeta',
-        descripcion_original: 'Me cobraron dos veces el pago de la tarjeta de crédito en mi cuenta corriente.',
-        esperado: 'PAGOS / ABONOS',
-        subcategoria_esperada: 'APLICACIÓN DE PAGO',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-003',
-        resumen_original: 'Cobro intereses de mora',
-        descripcion_original: 'Me están cobrando intereses de mora en mi tarjeta de crédito a pesar de haber pagado oportunamente.',
-        esperado: 'COMISIONES Y COBROS',
-        subcategoria_esperada: 'INTERESES',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-004',
-        resumen_original: 'Aumento de cupo',
-        descripcion_original: 'Solicito aumento de cupo para mi tarjeta de crédito Visa.',
-        esperado: 'TARJETAS',
-        subcategoria_esperada: 'CUPO Y AVANCES',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-005',
-        resumen_original: 'Compra no reconocida',
-        descripcion_original: 'No reconozco una compra realizada con mi tarjeta de crédito en una tienda virtual.',
-        esperado: 'FRAUDES',
-        subcategoria_esperada: 'OPERACIÓN NO RECONOCIDA',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-006',
-        resumen_original: 'Devolución de compra pendiente',
-        descripcion_original: 'El establecimiento comercial hizo la devolución de una compra realizada con mi tarjeta de crédito, pero sigue pendiente de ingresar.',
-        esperado: 'TARJETAS',
-        subcategoria_esperada: 'COMPRAS Y DEVOLUCIONES',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-007',
-        resumen_original: 'Diferencia en extracto',
-        descripcion_original: 'Presento una diferencia en el extracto de mi tarjeta de crédito con relación al saldo facturado.',
-        esperado: 'INFORMACIÓN Y DOCUMENTOS',
-        subcategoria_esperada: 'EXTRACTOS Y DOCUMENTOS',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-008',
-        resumen_original: 'Compra diferida a cuotas',
-        descripcion_original: 'Deseo rediferir a 24 cuotas una compra diferida efectuada con mi tarjeta de crédito.',
-        esperado: 'TARJETAS',
-        subcategoria_esperada: 'DIFERIDOS Y FINANCIACIÓN',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-009',
-        resumen_original: 'Cobro cuota de manejo',
-        descripcion_original: 'Me están cobrando cuota de manejo en mi tarjeta de crédito y solicito exoneración.',
-        esperado: 'CUOTA DE MANEJO',
-        subcategoria_esperada: 'COBRO',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-010',
-        resumen_original: 'Devolución cuota de manejo',
-        descripcion_original: 'Solicito la devolución de la cuota de manejo debitada de mi tarjeta de crédito.',
-        esperado: 'CUOTA DE MANEJO',
-        subcategoria_esperada: 'DEVOLUCIÓN / REVERSIÓN',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-011',
-        resumen_original: 'Seguro asociado a tarjeta',
-        descripcion_original: 'Tengo un seguro asociado a mi tarjeta de crédito que no autoricé y solicito cancelar.',
-        esperado: 'SEGUROS',
-        subcategoria_esperada: 'CANCELACIÓN Y DEVOLUCIÓN',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-012',
-        resumen_original: 'Error operación PSE',
-        descripcion_original: 'Presento error al realizar el pago de mi tarjeta de crédito por medio de PSE, la pasarela rechazó la operación.',
-        esperado: 'PSE',
-        subcategoria_esperada: 'ERROR / FALLA PSE',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-013',
-        resumen_original: 'Marcación GMF',
-        descripcion_original: 'Quiero marcar mi cuenta de ahorros para que no cobre el 4x1000 GMF.',
-        esperado: 'GMF',
-        subcategoria_esperada: 'MARCACIÓN',
-        producto_esperado: 'CUENTA DE AHORROS',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-014',
-        resumen_original: 'Operación GT5',
-        descripcion_original: 'Cliente presenta movimiento RECUP TRANX en su cuenta.',
-        esperado: 'GT5',
-        subcategoria_esperada: 'RECUP TRANX',
-        producto_esperado: 'CUENTA DE AHORROS',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-015',
-        resumen_original: 'Mención aislada de tarjeta',
-        descripcion_original: 'Tarjeta de crédito',
-        esperado: 'REVISIÓN HUMANA',
-        subcategoria_esperada: 'INFORMACIÓN INSUFICIENTE',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: true
-      },
-      {
-        numero_expediente: 'TEST-016',
-        resumen_original: 'Descripción insuficiente',
-        descripcion_original: 'revisar mi caso',
-        esperado: 'REVISIÓN HUMANA',
-        subcategoria_esperada: 'INFORMACIÓN INSUFICIENTE',
-        producto_esperado: 'NO ESPECIFICADO',
-        requiere_revision_esperada: true
-      },
-      {
-        numero_expediente: 'TEST-017',
-        resumen_original: 'Sin embargo no es embargo',
-        descripcion_original: 'Realicé el pago de mi tarjeta de crédito, sin embargo no veo reflejado el saldo en mi cupo.',
-        esperado: 'PAGOS / ABONOS',
-        subcategoria_esperada: 'APLICACIÓN DE PAGO',
-        producto_esperado: 'TARJETA DE CRÉDITO',
-        requiere_revision_esperada: false
-      },
-      {
-        numero_expediente: 'TEST-018',
-        resumen_original: 'Levantamiento de embargo',
-        descripcion_original: 'Radico oficio judicial emitido por el juzgado para el levantamiento de embargo y desembargo de mi cuenta.',
-        esperado: 'EMBARGOS',
-        subcategoria_esperada: 'DESEMBARGO',
-        producto_esperado: 'CUENTA DE AHORROS',
-        requiere_revision_esperada: false
-      }
-    ];
+      esperado: tc.categoriaEsperada,
+      subcategoria_esperada: tc.subcategoriaEsperada,
+      producto_esperado: tc.productoEsperado,
+      requiere_revision_esperada: tc.requiereRevisionEsperada
+    }));
 
     try {
       const catalogSummary = getCatalogSummary(activeCatalog);

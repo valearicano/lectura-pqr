@@ -73,6 +73,7 @@ export const TestCasesView: React.FC = () => {
     const espUpper = (r.esperado || '').toUpperCase().trim();
     
     const isCatPassed = catUpper === espUpper ||
+      (espUpper === 'PAGO A ITAU' && catUpper === 'PAGO A ITAU') ||
       (espUpper === 'GT5' && catUpper === 'GT5') ||
       (espUpper === 'CDT' && catUpper === 'CDT') ||
       (espUpper.includes('FRAUD') && catUpper.includes('FRAUD')) ||

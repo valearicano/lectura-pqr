@@ -32,6 +32,7 @@ export async function analyzePQRSBatch(
     descripcion_original: string;
     submotivo_original?: string;
     producto_original?: string;
+    tipo_origen?: string;
     fecha_radicacion?: string;
     fecha_compromiso?: string;
     hash_descripcion?: string;
@@ -44,9 +45,14 @@ export async function analyzePQRSBatch(
   const pendingIndices: number[] = [];
   const recordsToAnalyze: typeof records = [];
 
-  // 1. Check cache and evaluate explicit business rules first (Priorities 1 to 8)
+  // 1. Check cache and evaluate explicit business rules first
   records.forEach((rec, idx) => {
-    const contextKey = `${rec.descripcion_original || ''}|${rec.submotivo_original || ''}|${rec.resumen_original || ''}|${rec.producto_original || ''}`;
+    const tipoOrigen = rec.tipo_origen ||
+                       rec.columnas_adicionales?.['TIPO ORIGEN'] ||
+                       rec.columnas_adicionales?.['tipo_origen'] ||
+                       rec.columnas_adicionales?.['Tipo Origen'] ||
+                       rec.columnas_adicionales?.['ORIGEN'];
+    const contextKey = `${rec.descripcion_original || ''}|${rec.submotivo_original || ''}|${rec.resumen_original || ''}|${rec.producto_original || ''}|${tipoOrigen || ''}`;
     const hash = hashText(contextKey);
     if (analysisCache.has(hash)) {
       const cached = analysisCache.get(hash)!;
@@ -60,9 +66,9 @@ export async function analyzePQRSBatch(
     // Evaluate business rules ladder
     const deterministic = classifyPQRDeterministic(rec);
     
-    // Explicit business rules that have absolute priority over generic semantic classification:
-    // FRAUDES, PSE, CDT, GT5, GMF, CUOTA DE MANEJO, SEGUROS, EMBARGOS, TARJETAS, PAGOS, COMISIONES, etc.
+    // Explicit business rules that have absolute priority over generic semantic classification
     const hasExplicitRule =
+      deterministic.categoria_principal === 'PAGO A ITAU' ||
       deterministic.categoria_principal === 'FRAUDES' ||
       deterministic.categoria_principal === 'PSE' ||
       deterministic.categoria_principal === 'CDT' ||
@@ -95,6 +101,7 @@ export async function analyzePQRSBatch(
   // Format remaining cases for Gemini (PRIORIDAD 9: CLASIFICACIÓN SEMÁNTICA)
   const formattedCases = recordsToAnalyze.map(r => ({
     expediente: String(r.numero_expediente),
+    TIPO_ORIGEN: String(r.tipo_origen || r.columnas_adicionales?.['TIPO ORIGEN'] || r.columnas_adicionales?.['tipo_origen'] || 'No provisto'),
     DESC_DETALLADA: String(r.descripcion_original || ''),
     SUBMOTIVO_CONTEXTO: String(r.submotivo_original || r.resumen_original || 'No provisto'),
     NOMBRE_PRODUCTO_CONTEXTO: String(r.producto_original || 'No provisto')
@@ -104,6 +111,7 @@ export async function analyzePQRSBatch(
 Quiero que actúes como un CLASIFICADOR OPERATIVO DE PQR/PQRS BANCARIO.
 
 REGLAS DE PRIORIDAD ABSOLUTA:
+0. PAGO A ITAU: Exclusivamente para expedientes con TIPO ORIGEN = ITAU cuando el cliente reporta un pago no reflejado, pendiente, rechazado, demorado o no aplicado a la obligación. Si TIPO ORIGEN no es ITAU, NO asignar esta categoría. Si TIPO ORIGEN es ITAU pero el caso trata de fraude, cuota de manejo, extracto o cupo, asignar esa categoría específica.
 1. FRAUDES: Si el cliente manifiesta no reconocer una compra, débito, transferencia o producto (ej: "no reconozco", "yo no hice", "no autoricé", "no sé qué es", "me robaron", "desconozco"). NO investigar si fue fraude, clasificar inmediatamente como FRAUDES.
 2. PSE: Si el caso menciona PSE (pago, error, soporte de PSE). Si el pago de tarjeta fue por PSE, clasificar como PSE conservando el producto detectado.
 3. CDT: SOLO si menciona explícitamente CDT o certificado de depósito a término. ¡La palabra "cuenta" NUNCA es CDT!
