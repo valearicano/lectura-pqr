@@ -78,7 +78,7 @@ export const DEFAULT_CATALOG: CategoryItem[] = [
     descripcion: 'Cobro, inconformidad, exoneración, aclaración o devolución de cuotas de manejo y administración periódica de tarjetas o productos',
     activa: true,
     subcategorias: [
-      { id: 'sub-cuo-1', nombre: 'COBRO', activa: true, descripcion: 'Cobro de cuota de manejo, cuota mensual o tarifa de administración de la tarjeta' },
+      { id: 'sub-cuo-1', nombre: 'COBRO', activa: true, descripcion: 'Cobro de cuota de manejo, tarifa de manejo o cargo de administración del producto' },
       { id: 'sub-cuo-2', nombre: 'DEVOLUCIÓN O REVERSIÓN', activa: true, descripcion: 'Solicitud de devolución, reintegro, reversión o eliminación de cuota de manejo' },
       { id: 'sub-cuo-3', nombre: 'EXONERACIÓN O BENEFICIO NO APLICADO', activa: true, descripcion: 'Reclamo por cobro de cuota prometida como gratuita, beneficio no aplicado o pérdida de exoneración' },
       { id: 'sub-cuo-4', nombre: 'COBRO POSTERIOR A CANCELACIÓN', activa: true, descripcion: 'Cobro de cuota de manejo de una tarjeta cancelada, bloqueada, inactiva o cerrada' },
@@ -167,7 +167,8 @@ export const DEFAULT_CATALOG: CategoryItem[] = [
     activa: true,
     subcategorias: [
       { id: 'sub-cre-1', nombre: 'ESTADO DE OBLIGACIÓN / SALDOS', activa: true, descripcion: 'Consulta de saldo de crédito, plan de pagos y cuotas' },
-      { id: 'sub-cre-2', nombre: 'REFINANCIACIÓN Y ACUERDOS', activa: true, descripcion: 'Acuerdos de pago, reestructuración o alivios de cartera' }
+      { id: 'sub-cre-2', nombre: 'REFINANCIACIÓN Y ACUERDOS', activa: true, descripcion: 'Acuerdos de pago, reestructuración o alivios de cartera' },
+      { id: 'sub-cre-3', nombre: 'VALOR DE LA CUOTA Y PLAN DE PAGOS', activa: true, descripcion: 'Aumento, variación o inconsistencia en el valor de la cuota mensual de crédito, leasing, vivienda o plan de amortización' }
     ]
   },
   {

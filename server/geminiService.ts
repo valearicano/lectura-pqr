@@ -77,6 +77,7 @@ export async function analyzePQRSBatch(
       deterministic.categoria_principal === 'CUOTAS DE MANEJO' ||
       deterministic.categoria_principal === 'CUOTA DE MANEJO' ||
       deterministic.categoria_principal === 'HONORARIOS Y GASTOS DE COBRANZA' ||
+      deterministic.categoria_principal === 'CRÉDITOS / CARTERA' ||
       deterministic.categoria_principal === 'SEGUROS' ||
       deterministic.categoria_principal === 'EMBARGOS' ||
       deterministic.categoria_principal === 'TARJETAS' ||
@@ -119,10 +120,15 @@ REGLAS DE PRIORIDAD ABSOLUTA:
 3. CDT: SOLO si menciona explícitamente CDT o certificado de depósito a término. ¡La palabra "cuenta" NUNCA es CDT!
 4. GT5: Casos de cargo a cuenta en oficina, cargo cuenta día, cargo transacción no aplicada o RECUP TRANX.
 5. GMF: 4x1000, marcación, desmarcación o devolución.
-6. CUOTAS DE MANEJO: Cobro, devolución/reversión, exoneración o beneficio no aplicado, cobro posterior a cancelación, duplicado, cobro no reconocido o aclaración del valor de cuota de manejo.
+6. CUOTAS DE MANEJO: Cargo, cobro, tarifa de manejo, devolución/reversión, exoneración no aplicada, cobro posterior a cancelación, duplicado o aclaración de cuota de manejo / administración de tarjeta.
+   ¡PROHIBIDO clasificar cuotas de crédito, préstamos, leasing o vivienda como CUOTAS DE MANEJO!
 7. HONORARIOS Y GASTOS DE COBRANZA: Inconformidad con gastos de cobranza, honorarios de cobro/abogado, cobro cuestionado por no estar en mora o estar al día, cobro después del pago, cálculo no conforme, duplicado o falta de información/soportes.
-8. SEGUROS: Pólizas de vida, desempleo, seguros asociados a tarjeta o atados a crédito.
-8. TARJETAS DE CRÉDITO Y OPERATIVAS:
+8. CRÉDITOS / CARTERA:
+   - Cuotas mensuales de crédito, aumentos de cuota, revisión de plan de pagos, tablas de amortización, leasing, vivienda o préstamos: CRÉDITOS / CARTERA > VALOR DE LA CUOTA Y PLAN DE PAGOS.
+   - Refinanciación y acuerdos de pago: CRÉDITOS / CARTERA > REFINANCIACIÓN Y ACUERDOS.
+   - Saldos y estado de obligación: CRÉDITOS / CARTERA > ESTADO DE OBLIGACIÓN / SALDOS.
+9. SEGUROS: Pólizas de vida, desempleo, seguros asociados a tarjeta o atados a crédito.
+10. TARJETAS DE CRÉDITO Y OPERATIVAS:
    - Pagos no aplicados o duplicados: PAGOS / ABONOS > APLICACIÓN DE PAGO.
    - Intereses de mora o corrientes: COMISIONES Y COBROS > INTERESES.
    - Cupo y avances: TARJETAS > CUPO Y AVANCES.
@@ -134,8 +140,8 @@ REGLAS DE PRIORIDAD ABSOLUTA:
    - Activación de tarjeta: PRODUCTOS > ACTIVACIÓN DE PRODUCTOS.
    - Millas y puntos: TARJETAS > MILLAS Y PROGRAMAS DE LEALTAD.
    - Embargos financieros reales: EMBARGOS > DESEMBARGO o APLICACIÓN DE EMBARGO (¡NUNCA confundir la conjunción "sin embargo" con un embargo financiero!).
-9. OTRAS: Casos atípicos legítimos con información suficiente.
-10. REVISIÓN HUMANA: ÚNICAMENTE si no hay información suficiente para clasificar (texto vacío, ruido o mención aislada de un producto sin problema específico).
+11. OTRAS: Casos atípicos legítimos con información suficiente.
+12. REVISIÓN HUMANA: Casos con información insuficiente, texto vacío, ruido, o reclamos de cuotas ambiguas donde no se especifica si es cuota de crédito o cuota de manejo (ej. "Mi cuota mensual aumentó y no entiendo por qué").
 
 RESUMEN DEL REQUERIMIENTO:
 Máximo 20 palabras. Explica la petición o reclamo real del cliente.

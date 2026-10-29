@@ -342,6 +342,11 @@ export function detectProduct(
     fullText.includes('prestamo') ||
     fullText.includes('libranza') ||
     fullText.includes('hipotecario') ||
+    fullText.includes('leasing') ||
+    fullText.includes('vivienda') ||
+    fullText.includes('amortizacion') ||
+    fullText.includes('plan de pagos') ||
+    fullText.includes('plan de pago') ||
     fullText.includes('cartera')
   ) {
     return 'CRÉDITO / CARTERA';
@@ -550,7 +555,21 @@ export function normalizeCategoryName(raw: string): { categoria_principal: strin
   }
 
   // 11. CRÉDITOS / CARTERA
-  if ((clean.includes('CREDITO') && !clean.includes('TARJETA DE CREDITO') && !clean.includes('TARJETA CREDITO')) || clean.includes('CARTERA') || clean.includes('PRESTAMO') || clean.includes('LIBRANZA')) {
+  if (
+    (clean.includes('CREDITO') && !clean.includes('TARJETA DE CREDITO') && !clean.includes('TARJETA CREDITO')) ||
+    clean.includes('CARTERA') ||
+    clean.includes('PRESTAMO') ||
+    clean.includes('LIBRANZA') ||
+    clean.includes('LEASING') ||
+    clean.includes('VIVIENDA') ||
+    clean.includes('PLAN DE PAGO') ||
+    clean.includes('AMORTIZAC') ||
+    clean.includes('CUOTA DE CREDITO') ||
+    clean.includes('CUOTAS DE CREDITO')
+  ) {
+    if (clean.includes('PLAN DE PAGO') || clean.includes('CUOTA') || clean.includes('AMORTIZAC')) {
+      return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'VALOR DE LA CUOTA Y PLAN DE PAGOS' };
+    }
     if (clean.includes('REFINANC') || clean.includes('ACUERDO') || clean.includes('ALIVIO')) {
       return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'REFINANCIACIÓN Y ACUERDOS' };
     }
@@ -666,6 +685,164 @@ export function extractFullContextText(record: PQRInputRecord): string {
 }
 
 /**
+ * Deep contextual detection and subcategorization for CRÉDITOS / CARTERA
+ * specifically for loan/credit installments, payment plans, amortization, and adjustments.
+ */
+export function detectCreditoCarteraCuotas(
+  text: string,
+  submotivo: string,
+  detectedProduct: string
+): {
+  matches: boolean;
+  subcategoria: string;
+  intencion: string;
+  problema: string;
+  solicitud: string;
+  resumen: string;
+} {
+  const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const submotivoLower = (submotivo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const full = `${lower} ${submotivoLower}`;
+
+  // Credit card deferred purchases belong to TARJETAS > DIFERIDOS Y FINANCIACIÓN
+  const isCardDeferredPurchase =
+    (full.includes('tarjeta de credito') || full.includes('tarjeta credito') || detectedProduct === 'TARJETA DE CRÉDITO') &&
+    (full.includes('compra diferida') || full.includes('rediferir') || full.includes('diferir compra') || full.includes('diferir a cuotas') || full.includes('plazo de cuotas')) &&
+    !full.includes('credito de vivienda') && !full.includes('leasing') && !full.includes('libranza') && !full.includes('prestamo');
+
+  if (isCardDeferredPurchase) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '' };
+  }
+
+  // Explicit credit / loan / installment obligation signals
+  const hasCreditTerm =
+    full.includes('credito de vivienda') ||
+    full.includes('credito hipotecario') ||
+    full.includes('hipotecario') ||
+    full.includes('vivienda') ||
+    full.includes('credito de leasing') ||
+    full.includes('leasing') ||
+    full.includes('libranza') ||
+    full.includes('credito de libranza') ||
+    full.includes('prestamo') ||
+    full.includes('mi prestamo') ||
+    full.includes('credito de consumo') ||
+    full.includes('libre inversion') ||
+    full.includes('microcredito') ||
+    full.includes('cartera') ||
+    full.includes('obligacion crediticia') ||
+    full.includes('migracion bancaria') ||
+    (full.includes('credito') && !full.includes('tarjeta de credito') && !full.includes('tarjeta credito')) ||
+    detectedProduct === 'CRÉDITO / CARTERA';
+
+  const hasInstallmentTerm =
+    full.includes('cuota') ||
+    full.includes('cuotas') ||
+    full.includes('plan de pagos') ||
+    full.includes('plan de pago') ||
+    full.includes('amortizacion') ||
+    full.includes('tabla de amortizacion') ||
+    full.includes('inconsistencia en la amortizacion') ||
+    full.includes('valor de la cuota') ||
+    full.includes('aumento de la cuota') ||
+    full.includes('aumentaron la cuota') ||
+    full.includes('aumento de cuota') ||
+    full.includes('aumento mi cuota') ||
+    full.includes('incremento de cuota') ||
+    full.includes('subio la cuota') ||
+    full.includes('subieron la cuota') ||
+    full.includes('disminucion de la cuota') ||
+    full.includes('baja de la cuota') ||
+    full.includes('cuota mensual') ||
+    full.includes('pago de cuotas') ||
+    full.includes('cuotas pendientes') ||
+    full.includes('cuotas vencidas') ||
+    full.includes('cuotas de financiacion') ||
+    full.includes('condiciones financieras') ||
+    full.includes('tasa de interes') ||
+    full.includes('revisar las cuotas') ||
+    full.includes('revisar cuotas') ||
+    full.includes('valores incorrectos');
+
+  const isMatch = hasCreditTerm && hasInstallmentTerm;
+
+  if (!isMatch) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '' };
+  }
+
+  let sub = 'VALOR DE LA CUOTA Y PLAN DE PAGOS';
+  let intencion = 'Inconformidad o consulta sobre el valor de la cuota o plan de pagos del crédito';
+  let problema = 'Inconformidad con el valor de la cuota o plan de amortización del crédito';
+  let solicitud = 'Revisión y ajuste del valor de la cuota o plan de pagos';
+  let resumen = 'Reclama por valor de la cuota o inconsistencias en plan de pagos de su crédito.';
+
+  const isAcuerdoDePago =
+    full.includes('acuerdo de pago') ||
+    full.includes('acuerdos de pago') ||
+    full.includes('llegar a un acuerdo') ||
+    full.includes('propuesta de acuerdo') ||
+    (full.includes('acuerdo') && !full.includes('de acuerdo'));
+
+  if (full.includes('refinanc') || isAcuerdoDePago || full.includes('alivio') || full.includes('reestructur')) {
+    sub = 'REFINANCIACIÓN Y ACUERDOS';
+    intencion = 'Solicitud de acuerdo de pago, refinanciación o alivio financiero';
+    problema = 'Solicitud de acuerdo o reestructuración de obligación crediticia';
+    solicitud = 'Gestión de acuerdo de pago o refinanciación de cartera';
+    resumen = 'Solicita acuerdo de pago o reestructuración de su crédito.';
+  } else if (full.includes('aument') || full.includes('increment') || full.includes('subio') || full.includes('subieron')) {
+    sub = 'VALOR DE LA CUOTA Y PLAN DE PAGOS';
+    intencion = 'Inconformidad por aumento en el valor de la cuota del crédito';
+    problema = 'Aumento en el valor de la cuota mensual del crédito';
+    solicitud = 'Explicación del incremento y ajuste del valor de la cuota al pactado';
+    resumen = 'Reclama por aumento en el valor de la cuota de su crédito.';
+  } else if (full.includes('plan de pago') || full.includes('amortiz') || full.includes('inconsist') || full.includes('incorrect') || full.includes('diferenc')) {
+    sub = 'VALOR DE LA CUOTA Y PLAN DE PAGOS';
+    intencion = 'Inconsistencia en el plan de pagos o amortización del crédito';
+    problema = 'Diferencias o valores incorrectos en el plan de pagos del crédito';
+    solicitud = 'Corrección y aclaración del plan de amortización y pagos del crédito';
+    resumen = 'Solicita corrección de valores en el plan de pagos de su crédito.';
+  } else if (
+    full.includes('revisar las cuotas') ||
+    full.includes('revisar cuotas') ||
+    full.includes('explicacion sobre el valor') ||
+    full.includes('no entiendo la cuota') ||
+    full.includes('no estoy de acuerdo') ||
+    full.includes('desacuerdo') ||
+    full.includes('cuota mensual') ||
+    full.includes('valor de la cuota') ||
+    full.includes('cuota de mi prestamo') ||
+    full.includes('cuota de mi credito') ||
+    full.includes('cuota del prestamo') ||
+    full.includes('cuota del credito') ||
+    full.includes('cuota') ||
+    full.includes('cuotas')
+  ) {
+    sub = 'VALOR DE LA CUOTA Y PLAN DE PAGOS';
+    intencion = 'Solicitud de revisión, aclaración o desacuerdo con el valor de la cuota del crédito';
+    problema = 'Desacuerdo o duda sobre el valor de la cuota del crédito';
+    solicitud = 'Revisión y explicación del valor de la cuota liquidada';
+    resumen = 'Inconformidad o solicitud de revisión sobre el valor de la cuota de su crédito.';
+  } else {
+    sub = 'ESTADO DE OBLIGACIÓN / SALDOS';
+    intencion = 'Consulta de cuotas o estado de la obligación crediticia';
+    problema = 'Consulta o revisión de cuotas de la obligación';
+    solicitud = 'Información sobre estado de cuotas y saldo del crédito';
+    resumen = 'Consulta sobre cuotas y estado de obligación de su crédito.';
+  }
+
+  const prodDesc = full.includes('vivienda') ? ' en crédito de vivienda' : full.includes('leasing') ? ' en leasing' : full.includes('libranza') ? ' en libranza' : full.includes('prestamo') ? ' en préstamo' : ' en crédito';
+
+  return {
+    matches: true,
+    subcategoria: sub,
+    intencion,
+    problema: `${problema}${prodDesc}`,
+    solicitud,
+    resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', sub, 'CRÉDITO / CARTERA', resumen)
+  };
+}
+
+/**
  * Deep contextual detection and subcategorization for CUOTAS DE MANEJO
  */
 export function detectCuotasDeManejo(
@@ -694,10 +871,18 @@ export function detectCuotasDeManejo(
 
   const hasAdminWord =
     lower.includes('administracion de la tarjeta') ||
+    lower.includes('administracion de mi tarjeta') ||
     lower.includes('administracion de tarjeta') ||
     lower.includes('administracion tarjeta') ||
     lower.includes('administracion del producto') ||
+    lower.includes('administracion de producto') ||
     lower.includes('administracion producto') ||
+    lower.includes('administracion de mi cuenta') ||
+    lower.includes('administracion de la cuenta') ||
+    lower.includes('valor cobrado por administracion') ||
+    lower.includes('cobrado por administracion') ||
+    lower.includes('cobro por administracion') ||
+    lower.includes('cobro de administracion') ||
     lower.includes('tarifa de manejo') ||
     lower.includes('tarifa manejo') ||
     lower.includes('valor de manejo') ||
@@ -718,25 +903,53 @@ export function detectCuotasDeManejo(
     lower.includes('cobro por mantener') ||
     lower.includes('cobran por mantener');
 
+  // Strict: monthly fee words ONLY apply if context confirms management/maintenance
   const hasMonthlyFeeWord =
-    (lower.includes('cargo mensual') || lower.includes('cobro mensual') || lower.includes('tarifa mensual') || lower.includes('cobro periodico') || lower.includes('cobro de cuota') || lower.includes('cobro cuota')) &&
-    (lower.includes('tarjeta') || lower.includes('plastico') || lower.includes('manejo') || lower.includes('administracion') || detectedProduct === 'TARJETA DE CRÉDITO');
+    (lower.includes('cargo mensual de manejo') || lower.includes('cobro mensual de manejo') || lower.includes('tarifa mensual de manejo') || lower.includes('cobro periodico de manejo')) ||
+    ((lower.includes('cargo mensual') || lower.includes('cobro mensual') || lower.includes('tarifa mensual') || lower.includes('cobro periodico') || lower.includes('cargo periodico')) &&
+     (lower.includes('manejo') || lower.includes('administracion') || lower.includes('por mantener') || lower.includes('por tener')));
 
   const hasExonerationWord =
-    (lower.includes('sin cuota de manejo') || lower.includes('sin cuota') || lower.includes('exoneracion') || lower.includes('exencion') || lower.includes('cuota gratis') || lower.includes('gratuidad') || lower.includes('sin cobros mensuales')) &&
-    (lower.includes('tarjeta') || lower.includes('manejo') || lower.includes('cuota') || detectedProduct === 'TARJETA DE CRÉDITO');
+    (lower.includes('sin cuota de manejo') || lower.includes('cuota de manejo gratis') || lower.includes('exoneracion de cuota de manejo') || lower.includes('exencion de cuota de manejo') || lower.includes('sin cuota de manejo de por vida')) ||
+    ((lower.includes('exoneracion') || lower.includes('exencion') || lower.includes('cuota gratis') || lower.includes('gratuidad')) &&
+     (lower.includes('cuota de manejo') || lower.includes('cuota manejo') || lower.includes('manejo') || lower.includes('administracion')));
 
   const hasCancelledCardFee =
     (lower.includes('cancelad') || lower.includes('cerrad') || lower.includes('bloquead') || lower.includes('inactiv') || lower.includes('no utiliz') || lower.includes('no la uso') || lower.includes('no la he usado') || lower.includes('ya no tengo') || lower.includes('despues de cancelar')) &&
-    (lower.includes('cuota') || lower.includes('manejo') || lower.includes('administracion') || lower.includes('facturando') || lower.includes('cobrando')) &&
-    (lower.includes('tarjeta') || lower.includes('plastico') || detectedProduct === 'TARJETA DE CRÉDITO');
+    (lower.includes('cuota de manejo') || lower.includes('cuotas de manejo') || lower.includes('cuota manejo') || lower.includes('manejo') || lower.includes('administracion'));
 
-  // Disambiguation: loan installments (e.g. "cuota del crédito") should not be confused with cuota de manejo
-  const isLoanInstallment =
-    (lower.includes('cuota del credito') || lower.includes('cuota del prestamo') || lower.includes('cuota de mi credito') || lower.includes('cuota de mi prestamo') || lower.includes('valor de la cuota del credito')) &&
-    !hasCuotaWord && !hasAdminWord && !hasHoldCardWord;
+  // Disambiguation: loan installments (cuotas de crédito, vivienda, leasing, plan de pagos, etc.)
+  // MUST NEVER be confused with cuota de manejo.
+  const isLoanOrCreditContext =
+    lower.includes('credito') ||
+    lower.includes('prestamo') ||
+    lower.includes('vivienda') ||
+    lower.includes('leasing') ||
+    lower.includes('libranza') ||
+    lower.includes('hipotecari') ||
+    lower.includes('plan de pagos') ||
+    lower.includes('plan de pago') ||
+    lower.includes('amortizacion') ||
+    lower.includes('cuota del credito') ||
+    lower.includes('cuota mensual del credito') ||
+    lower.includes('cuota mensual de mi credito') ||
+    lower.includes('cuotas de mi credito') ||
+    lower.includes('cuota de vivienda') ||
+    lower.includes('cuota de leasing') ||
+    lower.includes('cuotas pendientes') ||
+    lower.includes('cuotas de financiacion');
 
-  if (isLoanInstallment) {
+  const hasExplicitManejoEvidence =
+    hasCuotaWord ||
+    hasAdminWord ||
+    hasHoldCardWord ||
+    lower.includes('cuota de manejo') ||
+    lower.includes('cuotas de manejo') ||
+    lower.includes('cuota manejo') ||
+    lower.includes('tarifa de manejo') ||
+    lower.includes('cargo de manejo');
+
+  if (isLoanOrCreditContext && !hasExplicitManejoEvidence) {
     return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '' };
   }
 
@@ -1159,7 +1372,8 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // Pre-run deep contextual detectors for Cuotas de Manejo and Honorarios/Gastos de Cobranza
+  // Pre-run deep contextual detectors for Cuotas de Crédito, Cuotas de Manejo and Honorarios/Gastos de Cobranza
+  const creditoRes = detectCreditoCarteraCuotas(fullContextText, record.submotivo_original || '', detectedProduct);
   const cuotaRes = detectCuotasDeManejo(fullContextText, record.submotivo_original || '', detectedProduct);
   const cobranzaRes = detectHonorariosCobranza(fullContextText, record.submotivo_original || '', detectedProduct);
 
@@ -1525,9 +1739,75 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   }
 
   // =========================================================================
-  // PRIORIDAD 6: CUOTAS DE MANEJO Y HONORARIOS/GASTOS DE COBRANZA
+  // PRIORIDAD 6: CUOTAS DE CRÉDITO / CUOTAS DE MANEJO / COBRANZA
   // Detección profunda y contextual con desambiguación y soporte concurrente
   // =========================================================================
+
+  // 6.1 Concurrencia entre Cuotas de Crédito y Cuotas de Manejo (ej. Caso 8)
+  if (creditoRes.matches && cuotaRes.matches) {
+    const creditoKeywords = ['credito', 'prestamo', 'vivienda', 'leasing', 'libranza', 'plan de pagos', 'amortizacion', 'cuota del credito', 'cuota de credito'];
+    const cuotaKeywords = ['cuota de manejo', 'cuotas de manejo', 'cuota manejo', 'administracion de la tarjeta', 'administracion de mi tarjeta'];
+
+    let firstCreditoPos = 999999;
+    for (const kw of creditoKeywords) {
+      const idx = fullLower.indexOf(kw);
+      if (idx !== -1 && idx < firstCreditoPos) firstCreditoPos = idx;
+    }
+    let firstCuotaPos = 999999;
+    for (const kw of cuotaKeywords) {
+      const idx = fullLower.indexOf(kw);
+      if (idx !== -1 && idx < firstCuotaPos) firstCuotaPos = idx;
+    }
+
+    if (firstCreditoPos <= firstCuotaPos) {
+      return {
+        expediente,
+        categoria_principal: 'CRÉDITOS / CARTERA',
+        subcategoria: creditoRes.subcategoria,
+        resumen_requerimiento: `${creditoRes.resumen} Adicionalmente reclama por cuota de manejo.`,
+        intencion_cliente: `${creditoRes.intencion}. Incluye reclamo concurrente sobre cuota de manejo.`,
+        confianza: 98,
+        requiere_revision_humana: false,
+        producto_detectado: 'CRÉDITO / CARTERA',
+        problema_principal: `${creditoRes.problema} y cobro de cuota de manejo`,
+        solicitud_cliente: `${creditoRes.solicitud} y revisión de cuota de manejo facturada`,
+        evidencia_textual: rawText.slice(0, 100)
+      };
+    } else {
+      return {
+        expediente,
+        categoria_principal: 'CUOTAS DE MANEJO',
+        subcategoria: cuotaRes.subcategoria,
+        resumen_requerimiento: `${cuotaRes.resumen} Adicionalmente reclama por cuota de crédito.`,
+        intencion_cliente: `${cuotaRes.intencion}. Incluye reclamo concurrente sobre cuota de crédito.`,
+        confianza: 98,
+        requiere_revision_humana: false,
+        producto_detectado: detectedProduct !== 'NO ESPECIFICADO' ? detectedProduct : 'TARJETA DE CRÉDITO',
+        problema_principal: `${cuotaRes.problema} y cuota de crédito`,
+        solicitud_cliente: `${cuotaRes.solicitud} y revisión de cuota de crédito`,
+        evidencia_textual: rawText.slice(0, 100)
+      };
+    }
+  }
+
+  // 6.2 Cuotas de Crédito / Préstamos / Vivienda / Leasing / Plan de Pagos
+  if (creditoRes.matches) {
+    return {
+      expediente,
+      categoria_principal: 'CRÉDITOS / CARTERA',
+      subcategoria: creditoRes.subcategoria,
+      resumen_requerimiento: creditoRes.resumen,
+      intencion_cliente: creditoRes.intencion,
+      confianza: 98,
+      requiere_revision_humana: false,
+      producto_detectado: detectedProduct !== 'NO ESPECIFICADO' ? detectedProduct : 'CRÉDITO / CARTERA',
+      problema_principal: creditoRes.problema,
+      solicitud_cliente: creditoRes.solicitud,
+      evidencia_textual: rawText.slice(0, 100)
+    };
+  }
+
+  // 6.3 Concurrencia entre Cuotas de Manejo y Gastos de Cobranza
   if (cuotaRes.matches && cobranzaRes.matches) {
     const cuotaKeywords = ['cuota de manejo', 'cuotas de manejo', 'cuota manejo', 'administracion de la tarjeta', 'cargo mensual', 'tarifa de manejo'];
     const cobranzaKeywords = ['honorarios', 'cobranza', 'gastos de cobro', 'gasto de cobro', 'prejuridic', 'casa de cobro'];
@@ -1574,6 +1854,7 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     }
   }
 
+  // 6.4 Cuotas de Manejo genuinas
   if (cuotaRes.matches) {
     return {
       expediente,
@@ -1590,6 +1871,7 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
+  // 6.5 Honorarios y Gastos de Cobranza
   if (cobranzaRes.matches) {
     return {
       expediente,
@@ -1603,6 +1885,31 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
       problema_principal: cobranzaRes.problema,
       solicitud_cliente: cobranzaRes.solicitud,
       evidencia_textual: rawText.slice(0, 100)
+    };
+  }
+
+  // 6.6 Caso ambiguo de cuota sin contexto (ej. "Mi cuota mensual aumentó y no entiendo por qué")
+  const isAmbiguousQuotaIssue =
+    (fullLower.includes('cuota') || fullLower.includes('cuotas')) &&
+    (fullLower.includes('aumento') || fullLower.includes('aumentaron') || fullLower.includes('incremento') || fullLower.includes('subio') || fullLower.includes('cambio en el valor') || fullLower.includes('valor de la cuota') || fullLower.includes('cuota mensual')) &&
+    !cuotaRes.matches &&
+    !creditoRes.matches &&
+    detectedProduct === 'NO ESPECIFICADO';
+
+  if (isAmbiguousQuotaIssue) {
+    return {
+      expediente,
+      categoria_principal: 'REVISIÓN HUMANA',
+      subcategoria: 'INFORMACIÓN INSUFICIENTE',
+      resumen_requerimiento: 'Aumento de cuota mensual sin producto ni concepto especificado.',
+      intencion_cliente: 'Aclaración de aumento de cuota (requiere información complementaria)',
+      confianza: 40,
+      requiere_revision_humana: true,
+      motivo_de_revision: 'El expediente menciona un aumento de cuota mensual pero no especifica si corresponde a una cuota de crédito, amortización, compra diferida o cargo de manejo, ni indica el producto asociado.',
+      producto_detectado: 'NO ESPECIFICADO',
+      problema_principal: 'Aumento de cuota mensual sin producto ni concepto especificado',
+      solicitud_cliente: 'Aclaración del motivo de aumento de la cuota',
+      evidencia_textual: rawText
     };
   }
 
@@ -2231,6 +2538,61 @@ export function validateClassificationConsistency(
       existe_inconsistencia: 'SI',
       motivo_inconsistencia: 'Se corrigió categoría: expediente con TIPO ORIGEN = ITAU y reporte de pago no aplicado/reflejado asignado a PAGO A ITAU.'
     };
+  }
+
+  // 6. Contradiction: CUOTAS DE MANEJO assigned to loan/credit installments or ambiguous quotas without management fee evidence
+  if (result.categoria_principal === 'CUOTAS DE MANEJO' || result.categoria_principal === 'CUOTA DE MANEJO') {
+    const hasExplicitManejoOrAdmin =
+      lower.includes('manejo') ||
+      lower.includes('manjo') ||
+      lower.includes('administracion de mi tarjeta') ||
+      lower.includes('administracion de la tarjeta') ||
+      lower.includes('mantenimiento de mi tarjeta') ||
+      lower.includes('mantenimiento de la tarjeta') ||
+      lower.includes('cuota de adm') ||
+      lower.includes('cobro por administracion') ||
+      lower.includes('cargo de administracion');
+
+    if (!hasExplicitManejoOrAdmin) {
+      // Check if it's a credit or loan installment
+      const isLoanOrCredit =
+        lower.includes('credito') ||
+        lower.includes('prestamo') ||
+        lower.includes('leasing') ||
+        lower.includes('vivienda') ||
+        lower.includes('libranza') ||
+        lower.includes('plan de pago') ||
+        lower.includes('amortizac') ||
+        lower.includes('plan de amortizacion') ||
+        lower.includes('extracto del credito');
+
+      if (isLoanOrCredit) {
+        return {
+          ...result,
+          categoria_principal: 'CRÉDITOS / CARTERA',
+          subcategoria: 'VALOR DE LA CUOTA Y PLAN DE PAGOS',
+          producto_detectado: 'CRÉDITOS / CARTERA',
+          existe_inconsistencia: 'SI',
+          motivo_inconsistencia: 'Se corrigió falso positivo: las cuotas de crédito, leasing o vivienda pertenecen a CRÉDITOS / CARTERA y no a CUOTAS DE MANEJO.'
+        };
+      }
+
+      // Check if it's an ambiguous quota without context (e.g., "Mi cuota mensual aumentó y no entiendo por qué")
+      const mentionsQuotaOnly = lower.includes('cuota') || lower.includes('cuotas');
+      if (mentionsQuotaOnly) {
+        return {
+          ...result,
+          categoria_principal: 'REVISIÓN HUMANA',
+          subcategoria: 'INFORMACIÓN INSUFICIENTE',
+          confianza: 40,
+          requiere_revision_humana: true,
+          existe_inconsistencia: 'SI',
+          motivo_inconsistencia: 'Mención de cuota ambigua sin producto ni evidencia contextual de cuota de manejo o crédito; requiere validación manual.',
+          problema_principal: 'Consulta o reclamo sobre cuota no especificada',
+          solicitud_cliente: 'Aclarar a qué producto u obligación corresponde la cuota'
+        };
+      }
+    }
   }
 
   return result;
