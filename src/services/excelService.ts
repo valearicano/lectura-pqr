@@ -96,9 +96,18 @@ export function exportEnrichedExcel(
     row['ID_SOLICITUD_ORIGINAL'] = r.numero_expediente;
     row['CATEGORIA_PRINCIPAL'] = catPrincipal;
     row['SUBCATEGORIA'] = subcat;
+    row['CATEGORIA_IA'] = a?.categoria_ia || catPrincipal;
+    row['SUBCATEGORIA_IA'] = a?.subcategoria_ia || subcat;
+    row['PRODUCTO_DETECTADO'] = a?.producto_detectado || a?.producto || 'NO ESPECIFICADO';
+    row['PROBLEMA_PRINCIPAL'] = a?.problema_principal || '';
+    row['SOLICITUD_CLIENTE'] = a?.solicitud_cliente || '';
+    row['RESUMEN_NORMALIZADO'] = a?.resumen_normalizado || resumenReq;
+    row['EVIDENCIA_CLASIFICACION'] = a?.evidencia_clasificacion || a?.evidencia_textual || '';
     row['RESUMEN_REQUERIMIENTO'] = resumenReq;
     row['NIVEL_DE_CONFIANZA'] = nivelConfianza;
+    row['NIVEL_CONFIANZA'] = nivelConfianza;
     row['REQUIERE_REVISION'] = reqRev;
+    row['POSIBLE_INCONSISTENCIA'] = a?.posible_inconsistencia || a?.existe_inconsistencia === 'SI' ? 'SI' : 'NO';
     if (reqRev === 'SI' && a?.motivo_de_revision) {
       row['MOTIVO_DE_REVISION'] = a.motivo_de_revision;
     }

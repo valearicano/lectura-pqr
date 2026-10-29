@@ -74,7 +74,9 @@ export async function analyzePQRSBatch(
       deterministic.categoria_principal === 'CDT' ||
       deterministic.categoria_principal === 'GT5' ||
       deterministic.categoria_principal === 'GMF' ||
+      deterministic.categoria_principal === 'CUOTAS DE MANEJO' ||
       deterministic.categoria_principal === 'CUOTA DE MANEJO' ||
+      deterministic.categoria_principal === 'HONORARIOS Y GASTOS DE COBRANZA' ||
       deterministic.categoria_principal === 'SEGUROS' ||
       deterministic.categoria_principal === 'EMBARGOS' ||
       deterministic.categoria_principal === 'TARJETAS' ||
@@ -117,8 +119,9 @@ REGLAS DE PRIORIDAD ABSOLUTA:
 3. CDT: SOLO si menciona explícitamente CDT o certificado de depósito a término. ¡La palabra "cuenta" NUNCA es CDT!
 4. GT5: Casos de cargo a cuenta en oficina, cargo cuenta día, cargo transacción no aplicada o RECUP TRANX.
 5. GMF: 4x1000, marcación, desmarcación o devolución.
-6. CUOTA DE MANEJO: Cobro, exoneración, reclamación o devolución de cuota de manejo (tarjetas o cuentas).
-7. SEGUROS: Pólizas de vida, desempleo, seguros asociados a tarjeta o atados a crédito.
+6. CUOTAS DE MANEJO: Cobro, devolución/reversión, exoneración o beneficio no aplicado, cobro posterior a cancelación, duplicado, cobro no reconocido o aclaración del valor de cuota de manejo.
+7. HONORARIOS Y GASTOS DE COBRANZA: Inconformidad con gastos de cobranza, honorarios de cobro/abogado, cobro cuestionado por no estar en mora o estar al día, cobro después del pago, cálculo no conforme, duplicado o falta de información/soportes.
+8. SEGUROS: Pólizas de vida, desempleo, seguros asociados a tarjeta o atados a crédito.
 8. TARJETAS DE CRÉDITO Y OPERATIVAS:
    - Pagos no aplicados o duplicados: PAGOS / ABONOS > APLICACIÓN DE PAGO.
    - Intereses de mora o corrientes: COMISIONES Y COBROS > INTERESES.

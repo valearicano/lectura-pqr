@@ -20,8 +20,10 @@ export function detectColumns(headers: string[]): ColumnDetectionResult {
   // Match DESC_DETALLADA and common detail headers
   const descripcionKeywords = [
     'desc_detallada', 'descdetallada', 'desc detallada', 'descripcion_detallada',
-    'descripción detallada', 'descripcion detallada', 'descripcion_de_la_radicacion',
-    'descripción de la radicación', 'descripcion_radicacion', 'descripción radicación',
+    'descripción detallada', 'descripcion detallada', 'descripcion_detalle', 'descripción detalle',
+    'descripcion detalle', 'peticion_del_cliente', 'peticion del cliente', 'petición del cliente',
+    'inconveniente_del_cliente', 'inconveniente del cliente', 'inconveniente', 'peticion', 'petición',
+    'descripcion_de_la_radicacion', 'descripción de la radicación', 'descripcion_radicacion', 'descripción radicación',
     'descripcion_de_la_solicitud', 'descripcion_del_caso', 'descripción del caso',
     'detalle_de_la_solicitud', 'texto_pqrs', 'descripcion_completa',
     'descripción completa', 'solicitud', 'detalle', 'descripcion', 'descripción',

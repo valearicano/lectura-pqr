@@ -74,13 +74,36 @@ export const DEFAULT_CATALOG: CategoryItem[] = [
   },
   {
     id: 'cat-cuota',
-    nombre: 'CUOTA DE MANEJO',
-    descripcion: 'Cobro, inconformidad, exoneración o devolución de cuotas de manejo de tarjetas o cuentas (Prioridad 6)',
+    nombre: 'CUOTAS DE MANEJO',
+    descripcion: 'Cobro, inconformidad, exoneración, aclaración o devolución de cuotas de manejo y administración periódica de tarjetas o productos',
     activa: true,
     subcategorias: [
-      { id: 'sub-cuo-1', nombre: 'COBRO', activa: true, descripcion: 'Cobro de cuota de manejo o tarifa mensual' },
-      { id: 'sub-cuo-2', nombre: 'RECLAMACIÓN / INCONFORMIDAD', activa: true, descripcion: 'Reclamo por cobro no acordado o pérdida de exoneración' },
-      { id: 'sub-cuo-3', nombre: 'DEVOLUCIÓN / REVERSIÓN', activa: true, descripcion: 'Solicitud de reversión o reintegro de cuota de manejo' }
+      { id: 'sub-cuo-1', nombre: 'COBRO', activa: true, descripcion: 'Cobro de cuota de manejo, cuota mensual o tarifa de administración de la tarjeta' },
+      { id: 'sub-cuo-2', nombre: 'DEVOLUCIÓN O REVERSIÓN', activa: true, descripcion: 'Solicitud de devolución, reintegro, reversión o eliminación de cuota de manejo' },
+      { id: 'sub-cuo-3', nombre: 'EXONERACIÓN O BENEFICIO NO APLICADO', activa: true, descripcion: 'Reclamo por cobro de cuota prometida como gratuita, beneficio no aplicado o pérdida de exoneración' },
+      { id: 'sub-cuo-4', nombre: 'COBRO POSTERIOR A CANCELACIÓN', activa: true, descripcion: 'Cobro de cuota de manejo de una tarjeta cancelada, bloqueada, inactiva o cerrada' },
+      { id: 'sub-cuo-5', nombre: 'COBRO DUPLICADO', activa: true, descripcion: 'Cobro repetido o duplicado de cuota de manejo en el mismo periodo' },
+      { id: 'sub-cuo-6', nombre: 'COBRO NO RECONOCIDO', activa: true, descripcion: 'Cuota de manejo o cobro de administración no reconocido o no autorizado por el cliente' },
+      { id: 'sub-cuo-7', nombre: 'ACLARACIÓN DEL VALOR O LAS CONDICIONES', activa: true, descripcion: 'Consulta o aclaración sobre incremento, periodicidad, cálculo o valor facturado de cuota de manejo' },
+      { id: 'sub-cuo-8', nombre: 'OTRO MOTIVO DE CUOTA DE MANEJO', activa: true, descripcion: 'Otros reclamos y solicitudes asociadas a cuotas de manejo' }
+    ]
+  },
+  {
+    id: 'cat-honorarios-cobranza',
+    nombre: 'HONORARIOS Y GASTOS DE COBRANZA',
+    descripcion: 'Cobro de honorarios jurídicos o prejurídicos, gastos de cobranza, gestión de recuperación de cartera y cargos por mora cuestionados',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-cob-1', nombre: 'COBRO DE HONORARIOS', activa: true, descripcion: 'Cobro de honorarios de abogado, gestión jurídica o prejurídica de cobranza' },
+      { id: 'sub-cob-2', nombre: 'GASTOS DE COBRANZA', activa: true, descripcion: 'Cargos por gestión de cobro, recuperación de cartera o gastos administrativos de mora' },
+      { id: 'sub-cob-3', nombre: 'COBRO CUESTIONADO POR NO ESTAR EN MORA', activa: true, descripcion: 'El cliente manifiesta estar al día, haber pagado a tiempo o que el banco aplicó el pago tarde' },
+      { id: 'sub-cob-4', nombre: 'COBRO DESPUÉS DEL PAGO', activa: true, descripcion: 'Cobro de gastos u honorarios después de haber pagado o cancelado la totalidad de la deuda' },
+      { id: 'sub-cob-5', nombre: 'VALOR O CÁLCULO NO CONFORME', activa: true, descripcion: 'Cobro considerado excesivo, desacuerdo con el porcentaje o solicitud de detalle del cálculo' },
+      { id: 'sub-cob-6', nombre: 'DEVOLUCIÓN O REVERSIÓN', activa: true, descripcion: 'Solicitud de devolución, reintegro, ajuste o eliminación del cargo de honorarios o cobranza' },
+      { id: 'sub-cob-7', nombre: 'COBRO DUPLICADO', activa: true, descripcion: 'Cargos de cobranza u honorarios cobrados de manera duplicada o repetida' },
+      { id: 'sub-cob-8', nombre: 'FALTA DE INFORMACIÓN O SOPORTES', activa: true, descripcion: 'Solicitud de soportes de la gestión o reclamo por cobro sin comunicación previa' },
+      { id: 'sub-cob-9', nombre: 'COBRO POSTERIOR A NORMALIZACIÓN', activa: true, descripcion: 'Cobro de honorarios después de haber normalizado, refinanciado o reestructurado la obligación' },
+      { id: 'sub-cob-10', nombre: 'OTRO MOTIVO DE HONORARIOS O GASTOS DE COBRANZA', activa: true, descripcion: 'Otras inconformidades y solicitudes relativas a honorarios o gastos de cobranza' }
     ]
   },
   {

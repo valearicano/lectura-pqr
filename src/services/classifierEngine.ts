@@ -466,11 +466,56 @@ export function normalizeCategoryName(raw: string): { categoria_principal: strin
     return { categoria_principal: 'GMF', subcategoria: 'COBRO' };
   }
 
-  // 6. CUOTA DE MANEJO
-  if (clean.includes('CUOTA DE MANEJO') || clean.includes('CUOTA MANEJO') || clean.includes('CUOTAS DE MANEJO')) {
-    if (clean.includes('DEVOL') || clean.includes('REVERSION') || clean.includes('REINTEGRO')) return { categoria_principal: 'CUOTA DE MANEJO', subcategoria: 'DEVOLUCIÓN / REVERSIÓN' };
-    if (clean.includes('EXONERAC') || clean.includes('RECLAM') || clean.includes('INCONFORMIDAD')) return { categoria_principal: 'CUOTA DE MANEJO', subcategoria: 'RECLAMACIÓN / INCONFORMIDAD' };
-    return { categoria_principal: 'CUOTA DE MANEJO', subcategoria: 'COBRO' };
+  // 6. CUOTAS DE MANEJO
+  if (clean.includes('CUOTA DE MANEJO') || clean.includes('CUOTA MANEJO') || clean.includes('CUOTAS DE MANEJO') || clean.includes('CUOTAS MANEJO')) {
+    if (clean.includes('CANCEL') || clean.includes('BLOQUE') || clean.includes('CERRAD') || clean.includes('POSTERIOR') || clean.includes('NO USO') || clean.includes('SIN USO')) {
+      return { categoria_principal: 'CUOTAS DE MANEJO', subcategoria: 'COBRO POSTERIOR A CANCELACIÓN' };
+    }
+    if (clean.includes('EXONERAC') || clean.includes('BENEFICIO') || clean.includes('GRATIS') || clean.includes('GRATUIT') || clean.includes('SIN COBRO')) {
+      return { categoria_principal: 'CUOTAS DE MANEJO', subcategoria: 'EXONERACIÓN O BENEFICIO NO APLICADO' };
+    }
+    if (clean.includes('DUPLICAD') || clean.includes('DOBLE') || clean.includes('DOS VECES')) {
+      return { categoria_principal: 'CUOTAS DE MANEJO', subcategoria: 'COBRO DUPLICADO' };
+    }
+    if (clean.includes('DEVOL') || clean.includes('REVERSION') || clean.includes('REINTEGRO') || clean.includes('ELIMIN') || clean.includes('RETIRAR')) {
+      return { categoria_principal: 'CUOTAS DE MANEJO', subcategoria: 'DEVOLUCIÓN O REVERSIÓN' };
+    }
+    if (clean.includes('NO RECONOCID') || clean.includes('NO AUTORIZ') || clean.includes('DESCONOC')) {
+      return { categoria_principal: 'CUOTAS DE MANEJO', subcategoria: 'COBRO NO RECONOCIDO' };
+    }
+    if (clean.includes('ACLARAC') || clean.includes('CONDICION') || clean.includes('VALOR') || clean.includes('INCONSIST') || clean.includes('DIFERENC') || clean.includes('EXPLICAC')) {
+      return { categoria_principal: 'CUOTAS DE MANEJO', subcategoria: 'ACLARACIÓN DEL VALOR O LAS CONDICIONES' };
+    }
+    return { categoria_principal: 'CUOTAS DE MANEJO', subcategoria: 'COBRO' };
+  }
+
+  // 6.1 HONORARIOS Y GASTOS DE COBRANZA
+  if (clean.includes('HONORARIO') || clean.includes('GASTO DE COBRANZA') || clean.includes('GASTOS DE COBRANZA') || clean.includes('GESTION DE COBRANZA') || clean.includes('GESTION DE COBRO') || clean.includes('COBRO PREJURIDICO') || clean.includes('COBRANZA PREJURIDICA') || clean.includes('GASTOS COBRANZA') || clean.includes('GASTOS COBRO')) {
+    if (clean.includes('NO ESTABA EN MORA') || clean.includes('AL DIA') || clean.includes('ANTES DE LA FECHA') || clean.includes('A TIEMPO') || clean.includes('OPORTUN')) {
+      return { categoria_principal: 'HONORARIOS Y GASTOS DE COBRANZA', subcategoria: 'COBRO CUESTIONADO POR NO ESTAR EN MORA' };
+    }
+    if (clean.includes('DESPUES DE PAGAR') || clean.includes('DESPUES DEL PAGO') || clean.includes('DEUDA PAGADA') || clean.includes('OBLIGACION PAGADA') || clean.includes('CANCELADA')) {
+      return { categoria_principal: 'HONORARIOS Y GASTOS DE COBRANZA', subcategoria: 'COBRO DESPUÉS DEL PAGO' };
+    }
+    if (clean.includes('NORMALIZ') || clean.includes('REESTRUCT') || clean.includes('ACUERDO')) {
+      return { categoria_principal: 'HONORARIOS Y GASTOS DE COBRANZA', subcategoria: 'COBRO POSTERIOR A NORMALIZACIÓN' };
+    }
+    if (clean.includes('SOPORTE') || clean.includes('SIN COMUNIC') || clean.includes('INFORMAC') || clean.includes('ORIGINO') || clean.includes('NO RECIBI')) {
+      return { categoria_principal: 'HONORARIOS Y GASTOS DE COBRANZA', subcategoria: 'FALTA DE INFORMACIÓN O SOPORTES' };
+    }
+    if (clean.includes('DUPLICAD') || clean.includes('DOBLE') || clean.includes('REPETID') || clean.includes('DOS VECES')) {
+      return { categoria_principal: 'HONORARIOS Y GASTOS DE COBRANZA', subcategoria: 'COBRO DUPLICADO' };
+    }
+    if (clean.includes('DEVOL') || clean.includes('REVERSION') || clean.includes('REINTEGRO') || clean.includes('ELIMIN') || clean.includes('RETIRAR') || clean.includes('AJUSTE DEL SALDO')) {
+      return { categoria_principal: 'HONORARIOS Y GASTOS DE COBRANZA', subcategoria: 'DEVOLUCIÓN O REVERSIÓN' };
+    }
+    if (clean.includes('EXCESIV') || clean.includes('PORCENTAJE') || clean.includes('CALCULO') || clean.includes('VALOR NO CONFORME') || clean.includes('DESPROPORC') || clean.includes('MUY ALTO')) {
+      return { categoria_principal: 'HONORARIOS Y GASTOS DE COBRANZA', subcategoria: 'VALOR O CÁLCULO NO CONFORME' };
+    }
+    if (clean.includes('HONORARIO') || clean.includes('ABOGADO') || clean.includes('PREJURIDIC') || clean.includes('JURIDIC')) {
+      return { categoria_principal: 'HONORARIOS Y GASTOS DE COBRANZA', subcategoria: 'COBRO DE HONORARIOS' };
+    }
+    return { categoria_principal: 'HONORARIOS Y GASTOS DE COBRANZA', subcategoria: 'GASTOS DE COBRANZA' };
   }
 
   // 7. SEGUROS
@@ -591,6 +636,408 @@ export function normalizeCategoryName(raw: string): { categoria_principal: strin
 }
 
 /**
+ * Extracts and combines all relevant text columns (DESC_DETALLADA, peticion, inconveniente, solicitud, hechos)
+ * to ensure no contextual information is missed.
+ */
+export function extractFullContextText(record: PQRInputRecord): string {
+  const parts: string[] = [];
+  if (record.descripcion_original && record.descripcion_original.trim().length > 0) {
+    parts.push(record.descripcion_original.trim());
+  }
+
+  if (record.columnas_adicionales) {
+    const candidateKeys = [
+      'peticion_del_cliente', 'peticion del cliente', 'petición del cliente',
+      'inconveniente_del_cliente', 'inconveniente del cliente', 'inconveniente',
+      'solicitud', 'peticion', 'petición', 'hechos', 'detalle', 'motivo'
+    ];
+    for (const [k, v] of Object.entries(record.columnas_adicionales)) {
+      if (v && typeof v === 'string' && v.trim().length > 0) {
+        const cleanK = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        if (candidateKeys.some(cand => cleanK.includes(cand))) {
+          if (!parts.some(p => p.includes(v.trim()))) {
+            parts.push(v.trim());
+          }
+        }
+      }
+    }
+  }
+  return parts.join(' ');
+}
+
+/**
+ * Deep contextual detection and subcategorization for CUOTAS DE MANEJO
+ */
+export function detectCuotasDeManejo(
+  text: string,
+  submotivo: string,
+  detectedProduct: string
+): {
+  matches: boolean;
+  subcategoria: string;
+  intencion: string;
+  problema: string;
+  solicitud: string;
+  resumen: string;
+} {
+  const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const submotivoLower = (submotivo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const hasCuotaWord =
+    lower.includes('cuota de manejo') ||
+    lower.includes('cuotas de manejo') ||
+    lower.includes('cuota manejo') ||
+    lower.includes('cuotas manejo') ||
+    submotivoLower.includes('cuota de manejo') ||
+    submotivoLower.includes('cuotas de manejo') ||
+    submotivoLower.includes('cuota manejo');
+
+  const hasAdminWord =
+    lower.includes('administracion de la tarjeta') ||
+    lower.includes('administracion de tarjeta') ||
+    lower.includes('administracion tarjeta') ||
+    lower.includes('administracion del producto') ||
+    lower.includes('administracion producto') ||
+    lower.includes('tarifa de manejo') ||
+    lower.includes('tarifa manejo') ||
+    lower.includes('valor de manejo') ||
+    lower.includes('valor del manejo') ||
+    lower.includes('valor por manejo') ||
+    lower.includes('cargo de manejo') ||
+    lower.includes('cargos de manejo') ||
+    lower.includes('cargo por manejo');
+
+  const hasHoldCardWord =
+    lower.includes('por mantener la tarjeta') ||
+    lower.includes('por mantener el plastico') ||
+    lower.includes('por tener la tarjeta') ||
+    lower.includes('por tener el plastico') ||
+    lower.includes('por tener mi tarjeta') ||
+    lower.includes('cobro por tener') ||
+    lower.includes('cobran por tener') ||
+    lower.includes('cobro por mantener') ||
+    lower.includes('cobran por mantener');
+
+  const hasMonthlyFeeWord =
+    (lower.includes('cargo mensual') || lower.includes('cobro mensual') || lower.includes('tarifa mensual') || lower.includes('cobro periodico') || lower.includes('cobro de cuota') || lower.includes('cobro cuota')) &&
+    (lower.includes('tarjeta') || lower.includes('plastico') || lower.includes('manejo') || lower.includes('administracion') || detectedProduct === 'TARJETA DE CRÉDITO');
+
+  const hasExonerationWord =
+    (lower.includes('sin cuota de manejo') || lower.includes('sin cuota') || lower.includes('exoneracion') || lower.includes('exencion') || lower.includes('cuota gratis') || lower.includes('gratuidad') || lower.includes('sin cobros mensuales')) &&
+    (lower.includes('tarjeta') || lower.includes('manejo') || lower.includes('cuota') || detectedProduct === 'TARJETA DE CRÉDITO');
+
+  const hasCancelledCardFee =
+    (lower.includes('cancelad') || lower.includes('cerrad') || lower.includes('bloquead') || lower.includes('inactiv') || lower.includes('no utiliz') || lower.includes('no la uso') || lower.includes('no la he usado') || lower.includes('ya no tengo') || lower.includes('despues de cancelar')) &&
+    (lower.includes('cuota') || lower.includes('manejo') || lower.includes('administracion') || lower.includes('facturando') || lower.includes('cobrando')) &&
+    (lower.includes('tarjeta') || lower.includes('plastico') || detectedProduct === 'TARJETA DE CRÉDITO');
+
+  // Disambiguation: loan installments (e.g. "cuota del crédito") should not be confused with cuota de manejo
+  const isLoanInstallment =
+    (lower.includes('cuota del credito') || lower.includes('cuota del prestamo') || lower.includes('cuota de mi credito') || lower.includes('cuota de mi prestamo') || lower.includes('valor de la cuota del credito')) &&
+    !hasCuotaWord && !hasAdminWord && !hasHoldCardWord;
+
+  if (isLoanInstallment) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '' };
+  }
+
+  const isMatch =
+    hasCuotaWord ||
+    hasAdminWord ||
+    hasHoldCardWord ||
+    hasMonthlyFeeWord ||
+    hasExonerationWord ||
+    hasCancelledCardFee;
+
+  if (!isMatch) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '' };
+  }
+
+  let sub = 'COBRO';
+  let intencion = 'Inconformidad con cobro de cuota de manejo';
+  let problema = 'Cobro de cuota de manejo';
+  let solicitud = 'Revisión del cobro de cuota de manejo facturado';
+  let resumen = 'Inconformidad con cobro de cuota de manejo en su producto.';
+
+  if (hasCancelledCardFee || lower.includes('cancel') || lower.includes('bloquead') || lower.includes('inactiv') || lower.includes('cerrad') || lower.includes('no utiliz') || lower.includes('no la uso') || lower.includes('no la he usado') || lower.includes('ya no tengo') || lower.includes('despues de cancelar') || lower.includes('posterior a la cancelacion') || lower.includes('sin uso')) {
+    sub = 'COBRO POSTERIOR A CANCELACIÓN';
+    intencion = 'Inconformidad por cobro de cuota de manejo en tarjeta o producto cancelado, bloqueado o inactivo';
+    problema = 'Cobro de cuota de manejo en producto cancelado, bloqueado o sin uso';
+    solicitud = 'Eliminación del cobro y confirmación de cancelación o cierre del producto';
+    resumen = 'Reclama cobro de cuota de manejo en tarjeta cancelada, bloqueada o sin uso.';
+  } else if (
+    (lower.includes('promet') || lower.includes('ofrec') || lower.includes('pactad') || lower.includes('de por vida') || lower.includes('gratuita') || lower.includes('gratis') || lower.includes('sin cuota de manejo') || lower.includes('beneficio no aplicado') || lower.includes('era sin cuota') || lower.includes('alianza') || lower.includes('convenio')) ||
+    (hasExonerationWord && !lower.includes('solicito exoneracion') && !lower.includes('pido exoneracion') && !lower.includes('solicito exonerar'))
+  ) {
+    sub = 'EXONERACIÓN O BENEFICIO NO APLICADO';
+    intencion = 'Reclamo por cobro de cuota de manejo a pesar de contar con condición de exoneración o beneficio de gratuidad';
+    problema = 'Cobro de cuota de manejo a pesar de condición de exoneración prometida';
+    solicitud = 'Aplicación de la exoneración prometida y reversión de los cobros efectuados';
+    resumen = 'Reclama por cobro de cuota de manejo pese a exoneración o beneficio ofrecido.';
+  } else if (lower.includes('duplicad') || lower.includes('doble cobro') || lower.includes('dos veces') || lower.includes('cobro doble') || lower.includes('dos cuotas') || lower.includes('cobrada dos veces')) {
+    sub = 'COBRO DUPLICADO';
+    intencion = 'Reclamo por cobro duplicado de cuota de manejo en el mismo periodo';
+    problema = 'Cobro duplicado de cuota de manejo';
+    solicitud = 'Devolución o reversión de la cuota de manejo duplicada';
+    resumen = 'Reclama cobro duplicado de cuota de manejo en su producto.';
+  } else if (lower.includes('devol') || lower.includes('reversion') || lower.includes('reintegr') || lower.includes('reembols') || lower.includes('eliminar') || lower.includes('retirar') || lower.includes('ajuste del extracto') || lower.includes('ajuste de extracto') || lower.includes('restitu') || lower.includes('quitar')) {
+    sub = 'DEVOLUCIÓN O REVERSIÓN';
+    intencion = 'Solicitud de devolución, reintegro o eliminación de valores cobrados por cuota de manejo';
+    problema = 'Cobro de cuota de manejo cuya devolución o eliminación se solicita';
+    solicitud = 'Reintegro o reversión del valor debitado por concepto de cuota de manejo';
+    resumen = 'Solicita devolución o reversión de valores cobrados por cuota de manejo.';
+  } else if (lower.includes('no reconoc') || lower.includes('desconoc') || lower.includes('no autoric') || lower.includes('no autorizo') || lower.includes('sin autorizacion') || lower.includes('no me informaron') || lower.includes('no informad') || lower.includes('nunca acepte') || lower.includes('no acepte') || lower.includes('no lo acepte') || lower.includes('nunca solicite') || lower.includes('no solicite') || lower.includes('indebid') || lower.includes('improcedente') || lower.includes('no debian cobrar')) {
+    sub = 'COBRO NO RECONOCIDO';
+    intencion = 'Inconformidad por cuota de manejo considerada no autorizada, no informada o no reconocida';
+    problema = 'Cobro de cuota de manejo no autorizado o no informado';
+    solicitud = 'Aclaración y anulación del cobro no reconocido de cuota de manejo';
+    resumen = 'Cuestiona cobro de cuota de manejo que considera no autorizada o no pactada.';
+  } else if (lower.includes('explicacion') || lower.includes('aclaracion') || lower.includes('diferencia') || lower.includes('no entiendo') || lower.includes('por que me cobran') || lower.includes('por que cobran') || lower.includes('superior a la esperada') || lower.includes('periodicidad') || lower.includes('condiciones') || lower.includes('revisar el valor') || lower.includes('valor facturado')) {
+    sub = 'ACLARACIÓN DEL VALOR O LAS CONDICIONES';
+    intencion = 'Solicitud de explicación o aclaración sobre el valor, periodicidad o condiciones de la cuota de manejo';
+    problema = 'Diferencia o duda sobre el valor y condiciones de la cuota de manejo facturada';
+    solicitud = 'Explicación detallada de las condiciones y valor facturado por manejo';
+    resumen = 'Solicita aclaración del valor o condiciones de cobro de la cuota de manejo.';
+  } else if (lower.includes('reposicion') || lower.includes('tarjeta adicional') || lower.includes('plastico adicional') || lower.includes('producto adicional') || lower.includes('amparada')) {
+    sub = 'OTRO MOTIVO DE CUOTA DE MANEJO';
+    intencion = 'Reclamación o solicitud sobre cuota de manejo por motivo específico';
+    problema = 'Cobro de cuota de manejo por reposición o producto adicional';
+    solicitud = 'Ajuste de cuota de manejo según condiciones especiales';
+    resumen = 'Reclamo sobre cuota de manejo asociada a condiciones especiales del producto.';
+  }
+
+  const prodDesc = detectedProduct !== 'NO ESPECIFICADO' ? ` en ${detectedProduct.toLowerCase()}` : '';
+
+  return {
+    matches: true,
+    subcategoria: sub,
+    intencion,
+    problema: `${problema}${prodDesc}`,
+    solicitud,
+    resumen: generateConciseSummary(text, 'CUOTAS DE MANEJO', sub, detectedProduct, resumen)
+  };
+}
+
+/**
+ * Deep contextual detection and subcategorization for HONORARIOS Y GASTOS DE COBRANZA
+ */
+export function detectHonorariosCobranza(
+  text: string,
+  submotivo: string,
+  detectedProduct: string
+): {
+  matches: boolean;
+  subcategoria: string;
+  intencion: string;
+  problema: string;
+  solicitud: string;
+  resumen: string;
+} {
+  const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const submotivoLower = (submotivo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const hasHonorariosWord =
+    lower.includes('honorarios de cobranza') ||
+    lower.includes('honorario de cobranza') ||
+    lower.includes('honorarios de cobro') ||
+    lower.includes('honorario de cobro') ||
+    lower.includes('honorarios cobranza') ||
+    lower.includes('honorarios cobro') ||
+    lower.includes('honorarios juridicos') ||
+    lower.includes('honorarios prejuridicos') ||
+    lower.includes('honorarios pre-juridicos') ||
+    lower.includes('honorarios de abogado') ||
+    lower.includes('honorarios de abogada') ||
+    lower.includes('honorarios de recuperacion') ||
+    lower.includes('cargo por honorarios') ||
+    lower.includes('cargo de honorarios') ||
+    lower.includes('servicios de cobranza') ||
+    lower.includes('cobro prejuridico') ||
+    lower.includes('cobranza prejuridica');
+
+  const hasGastosCobranzaWord =
+    lower.includes('gastos de cobranza') ||
+    lower.includes('gasto de cobranza') ||
+    lower.includes('gastos cobranza') ||
+    lower.includes('gasto cobranza') ||
+    lower.includes('gastos de cobro') ||
+    lower.includes('gasto de cobro') ||
+    lower.includes('gastos cobro') ||
+    lower.includes('gasto cobro') ||
+    lower.includes('gestion de cobranza') ||
+    lower.includes('gestion de cobro') ||
+    lower.includes('recuperacion de cartera') ||
+    lower.includes('cargo por cobranza') ||
+    lower.includes('cargos por cobranza') ||
+    lower.includes('cargos de cobranza') ||
+    lower.includes('gastos de recuperacion') ||
+    lower.includes('gasto de recuperacion');
+
+  const hasSubmotivoSignal =
+    submotivoLower.includes('cobranza') ||
+    submotivoLower.includes('honorarios') ||
+    submotivoLower.includes('prejuridico') ||
+    submotivoLower.includes('gastos cobro');
+
+  const hasNotOverdueClaim =
+    lower.includes('no estaba en mora') ||
+    lower.includes('no me encontraba en mora') ||
+    lower.includes('estaba al dia') ||
+    lower.includes('al dia con mis pagos') ||
+    lower.includes('al dia con mis obligaciones') ||
+    lower.includes('al dia en mis pagos') ||
+    lower.includes('pague antes de la fecha') ||
+    lower.includes('pague oportunamente') ||
+    lower.includes('a tiempo') ||
+    lower.includes('al tiempo') ||
+    lower.includes('pagado a tiempo') ||
+    lower.includes('pague a tiempo') ||
+    lower.includes('pagada a tiempo') ||
+    lower.includes('no tenia cuotas vencidas') ||
+    lower.includes('no tenia mora') ||
+    lower.includes('sin mora') ||
+    lower.includes('sin estar en mora') ||
+    lower.includes('mora inexistente') ||
+    lower.includes('retraso que no existio') ||
+    lower.includes('mora fue causada por') ||
+    lower.includes('mora causada por') ||
+    lower.includes('aplicaron el pago tarde') ||
+    lower.includes('aplicaron un pago tarde') ||
+    lower.includes('aplicacion tardia del pago');
+
+  const hasPaidDebtClaim =
+    lower.includes('despues de pagar') ||
+    lower.includes('despues del pago') ||
+    lower.includes('despues de haber pagado') ||
+    lower.includes('habiendo pagado') ||
+    lower.includes('ya estaba pagada') ||
+    lower.includes('ya habia pagado') ||
+    lower.includes('ya habia realizado el pago') ||
+    lower.includes('deuda pagada') ||
+    lower.includes('obligacion pagada') ||
+    lower.includes('pago total') ||
+    lower.includes('ya habia cancelado') ||
+    lower.includes('cancelada en su totalidad');
+
+  const hasCollectionChargeContext =
+    hasHonorariosWord ||
+    hasGastosCobranzaWord ||
+    hasSubmotivoSignal ||
+    lower.includes('cobranza') ||
+    lower.includes('casa de cobro') ||
+    lower.includes('agencia de cobro') ||
+    lower.includes('abogado') ||
+    lower.includes('prejuridic') ||
+    (hasNotOverdueClaim && (lower.includes('cobro') || lower.includes('cargo') || lower.includes('facturaron') || lower.includes('gastos')));
+
+  // Disambiguation: interest alone is NOT honorarios/gastos de cobranza
+  const isOnlyInterestDispute =
+    (lower.includes('intereses de mora') || lower.includes('intereses corrientes') || lower.includes('interes de mora') || lower.includes('tasa de interes')) &&
+    !hasHonorariosWord &&
+    !hasGastosCobranzaWord &&
+    !hasSubmotivoSignal &&
+    !lower.includes('cobranza');
+
+  if (isOnlyInterestDispute) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '' };
+  }
+
+  // Disambiguation: loan requests without collection claims
+  if (!hasHonorariosWord && !hasGastosCobranzaWord && !hasSubmotivoSignal && !lower.includes('cobranza')) {
+    if (lower.includes('extracto') || lower.includes('paz y salvo') || lower.includes('certificado') || lower.includes('derecho de peticion')) {
+      return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '' };
+    }
+  }
+
+  const isMatch =
+    hasHonorariosWord ||
+    hasGastosCobranzaWord ||
+    hasSubmotivoSignal ||
+    ((hasNotOverdueClaim || hasPaidDebtClaim) && hasCollectionChargeContext);
+
+  if (!isMatch) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '' };
+  }
+
+  let sub = 'GASTOS DE COBRANZA';
+  let intencion = 'Inconformidad con cobro de gastos de cobranza en su obligación';
+  let problema = 'Cobro de gastos de cobranza';
+  let solicitud = 'Revisión y aclaración de los gastos de cobranza';
+  let resumen = 'Inconformidad con cobro de gastos de cobranza en su obligación.';
+
+  if (hasNotOverdueClaim) {
+    sub = 'COBRO CUESTIONADO POR NO ESTAR EN MORA';
+    intencion = 'Cuestiona cobro de gastos de cobranza u honorarios manifestando no haber incurrido en mora o haber pagado oportunamente';
+    problema = 'Cobro de gastos de cobranza u honorarios a pesar de estar al día';
+    solicitud = 'Verificación de fechas de pago y eliminación o reintegro del cobro de cobranza';
+    resumen = 'Cuestiona gastos de cobranza porque manifiesta estar al día en sus pagos.';
+  } else if (hasPaidDebtClaim) {
+    sub = 'COBRO DESPUÉS DEL PAGO';
+    intencion = 'Reclamo por cobro de honorarios o gastos de cobranza aplicados con posterioridad al pago de la obligación';
+    problema = 'Cargo de cobranza aplicado tras el pago o cancelación de la deuda';
+    solicitud = 'Eliminación o devolución de gastos de cobranza aplicados tras el pago';
+    resumen = 'Reclama por gastos de cobranza aplicados después de haber pagado la obligación.';
+  } else if (lower.includes('normaliz') || lower.includes('reestructur') || lower.includes('acuerdo de pago') || lower.includes('alivio')) {
+    sub = 'COBRO POSTERIOR A NORMALIZACIÓN';
+    intencion = 'Inconformidad por cargos de cobranza u honorarios aplicados tras normalización o acuerdo sobre la obligación';
+    problema = 'Cobro de honorarios o gastos de cobro tras acuerdo de normalización';
+    solicitud = 'Retiro de los honorarios de cobranza en cumplimiento del acuerdo';
+    resumen = 'Reclama cobro de honorarios tras haber normalizado la obligación.';
+  } else if (lower.includes('devol') || lower.includes('reversion') || lower.includes('reintegr') || lower.includes('eliminar') || lower.includes('retirar') || lower.includes('ajuste del saldo') || lower.includes('quitar')) {
+    sub = 'DEVOLUCIÓN O REVERSIÓN';
+    intencion = 'Solicitud de devolución, reintegro o eliminación de valores cobrados por cobranza u honorarios';
+    problema = 'Cobro de cobranza u honorarios cuya devolución o eliminación se solicita';
+    solicitud = 'Reintegro o anulación de los valores cargados por honorarios o cobranza';
+    resumen = 'Solicita devolución o eliminación de honorarios y gastos de cobranza.';
+  } else if (lower.includes('duplicad') || lower.includes('doble') || lower.includes('repetid') || lower.includes('dos veces')) {
+    sub = 'COBRO DUPLICADO';
+    intencion = 'Reclamo por cargos de cobranza u honorarios cobrados de manera repetida o duplicada';
+    problema = 'Cobro duplicado de honorarios o gastos de cobranza';
+    solicitud = 'Devolución o anulación del cobro duplicado de cobranza';
+    resumen = 'Reclama cobro duplicado de gastos de cobranza u honorarios.';
+  } else if (lower.includes('excesiv') || lower.includes('desproporcionad') || lower.includes('porcentaje') || lower.includes('calculo') || lower.includes('como calcularon') || lower.includes('no corresponde a la deuda') || lower.includes('mas de lo debido') || lower.includes('muy alto')) {
+    sub = 'VALOR O CÁLCULO NO CONFORME';
+    intencion = 'Desacuerdo con el porcentaje, cálculo o valor liquidado por honorarios y gastos de cobranza';
+    problema = 'Valor o cálculo de honorarios de cobranza considerado excesivo';
+    solicitud = 'Revisión y ajuste del porcentaje o valor liquidado por gastos de cobranza';
+    resumen = 'Solicita aclaración o reducción del valor cobrado por honorarios de cobranza.';
+  } else if (lower.includes('soporte') || lower.includes('sin comunic') || lower.includes('no recibi llamada') || lower.includes('no recibi comunicacion') || lower.includes('que gestion') || lower.includes('factura') || lower.includes('no me informaron') || lower.includes('no reconozco la gestion') || lower.includes('no hubo gestion')) {
+    sub = 'FALTA DE INFORMACIÓN O SOPORTES';
+    intencion = 'Solicitud de soportes o aclaración de gestiones que originaron el cobro de cobranza u honorarios';
+    problema = 'Falta de soportes o comunicación previa sobre gestión de cobranza';
+    solicitud = 'Envío de soportes y justificación de la gestión de cobro facturada';
+    resumen = 'Solicita soportes de la gestión que originó los honorarios de cobranza.';
+  } else if (hasHonorariosWord || lower.includes('abogado') || lower.includes('prejuridic')) {
+    sub = 'COBRO DE HONORARIOS';
+    intencion = 'Inconformidad o reclamación por cobro de honorarios de cobranza o abogado';
+    problema = 'Cobro de honorarios de abogado o cobranza';
+    solicitud = 'Aclaración o ajuste de honorarios de cobranza facturados';
+    resumen = 'Inconformidad con cobro de honorarios jurídicos o prejurídicos de cobranza.';
+  } else {
+    sub = 'GASTOS DE COBRANZA';
+    intencion = 'Inconformidad o reclamación por cargo de gastos de cobranza o gestión de cobro';
+    problema = 'Cargo de gastos de cobranza en estado de cuenta';
+    solicitud = 'Revisión y aclaración de los gastos de cobranza cargados a su saldo';
+    resumen = 'Inconformidad con cobro de gastos de cobranza en su obligación.';
+  }
+
+  if (lower.includes('cuota de manejo') || lower.includes('cuotas de manejo')) {
+    problema = `${problema} y cuota de manejo`;
+    solicitud = `${solicitud} y revisión de cuota de manejo`;
+  }
+
+  const prodDesc = detectedProduct !== 'NO ESPECIFICADO' ? ` en ${detectedProduct.toLowerCase()}` : '';
+
+  return {
+    matches: true,
+    subcategoria: sub,
+    intencion,
+    problema: `${problema}${prodDesc}`,
+    solicitud,
+    resumen: generateConciseSummary(text, 'HONORARIOS Y GASTOS DE COBRANZA', sub, detectedProduct, resumen)
+  };
+}
+
+/**
  * Deterministic business rules engine prioritizing explicit business rules
  * over general statistical or semantic similarity.
  */
@@ -605,12 +1052,15 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
-  const detectedProduct = detectProduct(rawText, record.submotivo_original || record.resumen_original, record.producto_original);
+  const fullContextText = extractFullContextText(record);
+  const fullLower = fullContextText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const detectedProduct = detectProduct(fullContextText, record.submotivo_original || record.resumen_original, record.producto_original);
 
   // =========================================================================
   // REVISIÓN HUMANA (PRIORIDAD 10 / FILTRO PREVIO)
   // Estrictamente si la descripción está vacía, es ruido, o únicamente menciona
-  // el nombre aislado del producto sin describir el problema o solicitud.
+  // el nombre aislado del producto o palabra aislada sin describir el problema.
   // =========================================================================
   const isEssentiallyEmpty =
     cleanAlpha.length === 0 ||
@@ -631,7 +1081,13 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     cleanAlpha === 'revisarcaso' ||
     cleanAlpha === 'ayuda' ||
     cleanAlpha === 'caso' ||
-    cleanAlpha === 'informacion';
+    cleanAlpha === 'informacion' ||
+    cleanAlpha === 'cobro' ||
+    cleanAlpha === 'cobros' ||
+    cleanAlpha === 'comision' ||
+    cleanAlpha === 'honorario' ||
+    cleanAlpha === 'honorarios' ||
+    cleanAlpha === 'gastos';
 
   if (isEssentiallyEmpty) {
     return {
@@ -642,10 +1098,10 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
       intencion_cliente: 'Sin información de solicitud identificable',
       confianza: 35,
       requiere_revision_humana: true,
-      motivo_de_revision: 'DESC_DETALLADA carece de información sobre el producto, transacción o inconformidad del cliente.',
+      motivo_de_revision: 'DESC_DETALLADA carece de información suficiente sobre el producto, transacción o motivo de inconformidad del cliente.',
       producto_detectado: detectedProduct,
       problema_principal: 'Descripción insuficiente para determinar el tema',
-      solicitud_cliente: 'No especificada',
+      solicitud_cliente: 'Información insuficiente',
       evidencia_textual: rawText
     };
   }
@@ -703,6 +1159,10 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
+  // Pre-run deep contextual detectors for Cuotas de Manejo and Honorarios/Gastos de Cobranza
+  const cuotaRes = detectCuotasDeManejo(fullContextText, record.submotivo_original || '', detectedProduct);
+  const cobranzaRes = detectHonorariosCobranza(fullContextText, record.submotivo_original || '', detectedProduct);
+
   // Clean text from conjunction "sin embargo" so it never triggers false positive EMBARGOS
   const textWithoutSinEmbargo = lower.replace(/\bsin embargo\b/gi, ' ');
   // Clean "tarjeta de credito" from matching generic loan "credito"
@@ -711,14 +1171,15 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   // =========================================================================
   // PRIORIDAD 1: FRAUDES
   // Si el cliente manifiesta que NO reconoce una operación, compra, producto o movimiento.
-  // Exception: insurance enrollment disputes ("seguro asociado", "seguro que no autorice")
-  // belong to SEGUROS as defined by business rules.
+  // Exception: insurance enrollment disputes, cuotas de manejo disputes, and cobranza disputes
+  // belong to their specific business rule categories.
   // =========================================================================
   const isInsuranceDispute = lower.includes('seguro') || lower.includes('poliza');
-  const isCuotaManejoDispute = lower.includes('cuota de manejo') || lower.includes('cuotas de manejo') || lower.includes('cuota manejo');
+  const isCuotaManejoDispute = cuotaRes.matches;
+  const isCobranzaDispute = cobranzaRes.matches;
 
   const isFraudManifestation =
-    !isInsuranceDispute && !isCuotaManejoDispute && (
+    !isInsuranceDispute && !isCuotaManejoDispute && !isCobranzaDispute && (
       lower.includes('no reconozco') ||
       lower.includes('no reconoce') ||
       lower.includes('no reconocid') ||
@@ -1064,43 +1525,83 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   }
 
   // =========================================================================
-  // PRIORIDAD 6: CUOTA DE MANEJO
+  // PRIORIDAD 6: CUOTAS DE MANEJO Y HONORARIOS/GASTOS DE COBRANZA
+  // Detección profunda y contextual con desambiguación y soporte concurrente
   // =========================================================================
-  const isCuotaManejo =
-    lower.includes('cuota de manejo') ||
-    lower.includes('cuotas de manejo') ||
-    lower.includes('cuota manejo') ||
-    lower.includes('cobro de cuota') ||
-    lower.includes('cobro cuota') ||
-    lower.includes('cuota mensual') ||
-    submotivoLower.includes('cuota de manejo') ||
-    submotivoLower.includes('cuota manejo');
+  if (cuotaRes.matches && cobranzaRes.matches) {
+    const cuotaKeywords = ['cuota de manejo', 'cuotas de manejo', 'cuota manejo', 'administracion de la tarjeta', 'cargo mensual', 'tarifa de manejo'];
+    const cobranzaKeywords = ['honorarios', 'cobranza', 'gastos de cobro', 'gasto de cobro', 'prejuridic', 'casa de cobro'];
 
-  if (isCuotaManejo) {
-    let sub = 'COBRO';
-    let intencion = 'Inconformidad con cobro de cuota de manejo';
-    if (lower.includes('devol') || lower.includes('reversion') || lower.includes('reintegro')) {
-      sub = 'DEVOLUCIÓN / REVERSIÓN';
-      intencion = 'Solicitud de devolución o reversión de cuota de manejo';
-    } else if (lower.includes('cobro de cuota') || lower.includes('cobrando cuota') || lower.includes('cobro cuota') || lower.includes('cobro de cuotas') || lower.includes('me cobran cuota') || lower.includes('tarifa mensual')) {
-      sub = 'COBRO';
-      intencion = 'Inconformidad o reclamación por cobro de cuota de manejo';
-    } else if (lower.includes('exonerac') || lower.includes('prometieron') || lower.includes('acuerdo')) {
-      sub = 'RECLAMACIÓN / INCONFORMIDAD';
-      intencion = 'Reclamo por cobro de cuota exonerada o no acordada';
+    let firstCuotaPos = 999999;
+    for (const kw of cuotaKeywords) {
+      const idx = fullLower.indexOf(kw);
+      if (idx !== -1 && idx < firstCuotaPos) firstCuotaPos = idx;
     }
-    const prodDesc = detectedProduct !== 'NO ESPECIFICADO' ? ` en ${detectedProduct.toLowerCase()}` : '';
+    let firstCobranzaPos = 999999;
+    for (const kw of cobranzaKeywords) {
+      const idx = fullLower.indexOf(kw);
+      if (idx !== -1 && idx < firstCobranzaPos) firstCobranzaPos = idx;
+    }
+
+    if (firstCuotaPos <= firstCobranzaPos) {
+      return {
+        expediente,
+        categoria_principal: 'CUOTAS DE MANEJO',
+        subcategoria: cuotaRes.subcategoria,
+        resumen_requerimiento: `${cuotaRes.resumen} Adicionalmente reclama por gastos de cobranza u honorarios.`,
+        intencion_cliente: `${cuotaRes.intencion}. Incluye reclamo concurrente sobre honorarios o gastos de cobranza.`,
+        confianza: 98,
+        requiere_revision_humana: false,
+        producto_detectado: detectedProduct,
+        problema_principal: `${cuotaRes.problema} y gastos de cobranza`,
+        solicitud_cliente: `${cuotaRes.solicitud} y revisión de gastos de cobranza facturados`,
+        evidencia_textual: rawText.slice(0, 100)
+      };
+    } else {
+      return {
+        expediente,
+        categoria_principal: 'HONORARIOS Y GASTOS DE COBRANZA',
+        subcategoria: cobranzaRes.subcategoria,
+        resumen_requerimiento: `${cobranzaRes.resumen} Adicionalmente reclama por cuota de manejo.`,
+        intencion_cliente: `${cobranzaRes.intencion}. Incluye reclamo concurrente sobre cuota de manejo.`,
+        confianza: 98,
+        requiere_revision_humana: false,
+        producto_detectado: detectedProduct,
+        problema_principal: `${cobranzaRes.problema} y cobro de cuota de manejo`,
+        solicitud_cliente: `${cobranzaRes.solicitud} y revisión de cuota de manejo`,
+        evidencia_textual: rawText.slice(0, 100)
+      };
+    }
+  }
+
+  if (cuotaRes.matches) {
     return {
       expediente,
-      categoria_principal: 'CUOTA DE MANEJO',
-      subcategoria: sub,
-      resumen_requerimiento: generateConciseSummary(rawText, 'CUOTA DE MANEJO', sub, detectedProduct, `Cliente solicita gestión de cobro de cuota de manejo${prodDesc}.`),
-      intencion_cliente: intencion,
+      categoria_principal: 'CUOTAS DE MANEJO',
+      subcategoria: cuotaRes.subcategoria,
+      resumen_requerimiento: cuotaRes.resumen,
+      intencion_cliente: cuotaRes.intencion,
       confianza: 98,
       requiere_revision_humana: false,
       producto_detectado: detectedProduct,
-      problema_principal: `Cobro de cuota de manejo${prodDesc}`,
-      solicitud_cliente: intencion,
+      problema_principal: cuotaRes.problema,
+      solicitud_cliente: cuotaRes.solicitud,
+      evidencia_textual: rawText.slice(0, 100)
+    };
+  }
+
+  if (cobranzaRes.matches) {
+    return {
+      expediente,
+      categoria_principal: 'HONORARIOS Y GASTOS DE COBRANZA',
+      subcategoria: cobranzaRes.subcategoria,
+      resumen_requerimiento: cobranzaRes.resumen,
+      intencion_cliente: cobranzaRes.intencion,
+      confianza: 98,
+      requiere_revision_humana: false,
+      producto_detectado: detectedProduct,
+      problema_principal: cobranzaRes.problema,
+      solicitud_cliente: cobranzaRes.solicitud,
       evidencia_textual: rawText.slice(0, 100)
     };
   }
@@ -1683,10 +2184,11 @@ export function validateClassificationConsistency(
     }
   }
 
-  // 3. Contradiction: Fraud manifestation not categorized as FRAUDES (excluding insurance disputes)
+  // 3. Contradiction: Fraud manifestation not categorized as FRAUDES (excluding insurance, cuota de manejo, and cobranza disputes)
   const isInsurance = lower.includes('seguro') || lower.includes('poliza');
+  const isCuotaOrCobranza = result.categoria_principal === 'CUOTAS DE MANEJO' || result.categoria_principal === 'HONORARIOS Y GASTOS DE COBRANZA' || result.categoria_principal === 'CUOTA DE MANEJO';
   const hasFraudMention =
-    !isInsurance && (
+    !isInsurance && !isCuotaOrCobranza && (
       lower.includes('no reconozco') ||
       lower.includes('yo no hice') ||
       lower.includes('no autorice') ||
@@ -1755,6 +2257,8 @@ export function buildPQRSAnalysis(
     categoria: catPrincipal,
     categoria_principal: catPrincipal,
     subcategoria: subcat,
+    categoria_ia: catPrincipal,
+    subcategoria_ia: subcat,
     resumen_requerimiento: shortSummary,
     intencion_cliente: validated.intencion_cliente || shortSummary,
     confianza: conf,
@@ -1769,6 +2273,7 @@ export function buildPQRSAnalysis(
     problema_principal: validated.problema_principal || shortSummary,
     solicitud_cliente: validated.solicitud_cliente || validated.intencion_cliente || shortSummary,
     evidencia_textual: validated.evidencia_textual || record.descripcion_original.slice(0, 100),
+    evidencia_clasificacion: validated.evidencia_textual || record.descripcion_original.slice(0, 100),
     tipo_pqr: catPrincipal === 'INFORMACIÓN Y DOCUMENTOS' ? 'PETICIÓN' : catPrincipal === 'SERVICIO / ATENCIÓN' ? 'QUEJA' : 'RECLAMO',
     motivo: catPrincipal,
     submotivo: subcat,

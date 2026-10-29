@@ -15,6 +15,7 @@ export const CATEGORIAS_OPERATIVAS = [
   'PAGO A ITAU',
   'SEGUROS',
   'CUOTAS DE MANEJO',
+  'HONORARIOS Y GASTOS DE COBRANZA',
   'PSE',
   'GMF',
   'EMBARGOS DE CUENTAS',
@@ -49,6 +50,7 @@ export const CATEGORIAS_MAESTRAS_16 = [
   'PAGO A ITAU',
   'SEGUROS',
   'CUOTAS DE MANEJO',
+  'HONORARIOS Y GASTOS DE COBRANZA',
   'PSE',
   'GMF',
   'EMBARGOS DE CUENTAS',
@@ -110,7 +112,10 @@ export interface PQRSAnalysis {
   motivo_de_revision?: string;
   existe_inconsistencia?: 'SI' | 'NO';
   evidencia_textual?: string;
+  evidencia_clasificacion?: string;
   producto_detectado?: string;
+  categoria_ia?: string;
+  subcategoria_ia?: string;
 
   // Extraction of payment dates and values (ITAU)
   fecha_pago?: string;
