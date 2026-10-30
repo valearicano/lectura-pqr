@@ -77,6 +77,7 @@ export async function analyzePQRSBatch(
       deterministic.categoria_principal === 'CUOTAS DE MANEJO' ||
       deterministic.categoria_principal === 'CUOTA DE MANEJO' ||
       deterministic.categoria_principal === 'HONORARIOS Y GASTOS DE COBRANZA' ||
+      deterministic.categoria_principal === 'CONDICIONES' ||
       deterministic.categoria_principal === 'CRÉDITOS / CARTERA' ||
       deterministic.categoria_principal === 'SEGUROS' ||
       deterministic.categoria_principal === 'EMBARGOS' ||
@@ -123,12 +124,24 @@ REGLAS DE PRIORIDAD ABSOLUTA:
 6. CUOTAS DE MANEJO: Cargo, cobro, tarifa de manejo, devolución/reversión, exoneración no aplicada, cobro posterior a cancelación, duplicado o aclaración de cuota de manejo / administración de tarjeta.
    ¡PROHIBIDO clasificar cuotas de crédito, préstamos, leasing o vivienda como CUOTAS DE MANEJO!
 7. HONORARIOS Y GASTOS DE COBRANZA: Inconformidad con gastos de cobranza, honorarios de cobro/abogado, cobro cuestionado por no estar en mora o estar al día, cobro después del pago, cálculo no conforme, duplicado o falta de información/soportes.
-8. CRÉDITOS / CARTERA:
+8. CONDICIONES (CARTERA / CRÉDITOS):
+   Inconformidad, desacuerdo, reclamación o revisión sobre condiciones de crédito o producto financiero:
+   - TASA DE INTERÉS: Inconformidad con la tasa asignada, tasa incorrecta, tasa no acordada, tasa superior o intereses que no corresponden a la tasa pactada.
+   - CAMBIO DE TASA: Aumento de tasa, modificación no explicada o cambio de tasa fija a variable.
+   - PLAZO DEL CRÉDITO: Modificación, ampliación o desacuerdo con el plazo asignado o número de cuotas.
+   - VALOR DE CUOTA POR CONDICIONES: Cuota mensual que quedó más alta de lo informado o no corresponde a las condiciones pactadas.
+   - MODALIDAD DE FINANCIACIÓN: Desacuerdo con la modalidad, forma de liquidación o condiciones del producto contratado.
+   - CONDICIONES PACTADAS NO RESPETADAS: Incumplimiento de lo ofrecido, negociación inicial o condiciones aprobadas distintas.
+   - CAMBIO DE CONDICIONES: Modificación unilateral de condiciones del crédito sin previo aviso o consentimiento.
+   - CONDICIONES COMERCIALES: Ofertas comerciales, beneficios prometidos no aplicados o condiciones diferentes a la solicitud.
+   - CONDICIONES DESPUÉS DE MIGRACIÓN: Cambio de tasa, cuota o condiciones tras migración o cesión de cartera.
+   - OTRAS CONDICIONES DEL CRÉDITO: Desacuerdo general con las condiciones del crédito o leasing.
+9. CRÉDITOS / CARTERA:
    - Cuotas mensuales de crédito, aumentos de cuota, revisión de plan de pagos, tablas de amortización, leasing, vivienda o préstamos: CRÉDITOS / CARTERA > VALOR DE LA CUOTA Y PLAN DE PAGOS.
    - Refinanciación y acuerdos de pago: CRÉDITOS / CARTERA > REFINANCIACIÓN Y ACUERDOS.
    - Saldos y estado de obligación: CRÉDITOS / CARTERA > ESTADO DE OBLIGACIÓN / SALDOS.
-9. SEGUROS: Pólizas de vida, desempleo, seguros asociados a tarjeta o atados a crédito.
-10. TARJETAS DE CRÉDITO Y OPERATIVAS:
+10. SEGUROS: Pólizas de vida, desempleo, seguros asociados a tarjeta o atados a crédito.
+11. TARJETAS DE CRÉDITO Y OPERATIVAS:
    - Pagos no aplicados o duplicados: PAGOS / ABONOS > APLICACIÓN DE PAGO.
    - Intereses de mora o corrientes: COMISIONES Y COBROS > INTERESES.
    - Cupo y avances: TARJETAS > CUPO Y AVANCES.

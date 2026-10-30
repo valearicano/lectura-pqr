@@ -25,7 +25,7 @@ export const CUOTAS_CREDITO_VS_MANEJO_SUITE: CuotasCreditoVsManejoTestCase[] = [
     requiereRevisionEsperada: false,
     verificar: (analysis) => {
       return analysis.categoria_principal !== 'CUOTAS DE MANEJO' &&
-             (analysis.producto_detectado === 'CRÉDITO / CARTERA' || analysis.producto_detectado === 'CRÉDITOS / CARTERA');
+             (analysis.producto_detectado === 'CRÉDITO / CARTERA' || analysis.producto_detectado === 'CRÉDITOS / CARTERA' || analysis.producto_detectado === 'CRÉDITO DE VIVIENDA');
     }
   },
 
@@ -40,7 +40,7 @@ export const CUOTAS_CREDITO_VS_MANEJO_SUITE: CuotasCreditoVsManejoTestCase[] = [
     requiereRevisionEsperada: false,
     verificar: (analysis) => {
       return analysis.categoria_principal !== 'CUOTAS DE MANEJO' &&
-             (analysis.producto_detectado === 'CRÉDITO / CARTERA' || analysis.producto_detectado === 'CRÉDITOS / CARTERA');
+             (analysis.producto_detectado === 'CRÉDITO / CARTERA' || analysis.producto_detectado === 'CRÉDITOS / CARTERA' || analysis.producto_detectado === 'LEASING');
     }
   },
 

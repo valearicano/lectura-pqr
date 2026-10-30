@@ -172,6 +172,24 @@ export const DEFAULT_CATALOG: CategoryItem[] = [
     ]
   },
   {
+    id: 'cat-condiciones',
+    nombre: 'CONDICIONES',
+    descripcion: 'Inconformidad, desacuerdo, reclamación o revisión sobre condiciones de cartera/crédito: tasas de interés, cambio de tasa, plazos, cuotas pactadas, cambio de condiciones o migración',
+    activa: true,
+    subcategorias: [
+      { id: 'sub-con-1', nombre: 'TASA DE INTERÉS', activa: true, descripcion: 'Inconformidad con la tasa asignada, tasa incorrecta, tasa no acordada, tasa superior o intereses que no corresponden a la tasa pactada' },
+      { id: 'sub-con-2', nombre: 'CAMBIO DE TASA', activa: true, descripcion: 'Aumento de tasa, modificación no informada o conversión de tasa fija a variable' },
+      { id: 'sub-con-3', nombre: 'PLAZO DEL CRÉDITO', activa: true, descripcion: 'Modificación, ampliación o desacuerdo con el plazo asignado, número de cuotas o tiempo de financiación' },
+      { id: 'sub-con-4', nombre: 'VALOR DE CUOTA POR CONDICIONES', activa: true, descripcion: 'Cuota mensual o plan de pagos que quedó diferente a lo pactado, más alta de lo informado o no respeta condiciones acordadas' },
+      { id: 'sub-con-5', nombre: 'MODALIDAD DE FINANCIACIÓN', activa: true, descripcion: 'Desacuerdo con la modalidad del crédito, forma de liquidación o condiciones del producto contratado' },
+      { id: 'sub-con-6', nombre: 'CONDICIONES PACTADAS NO RESPETADAS', activa: true, descripcion: 'Incumplimiento de lo ofrecido, negociación inicial o condiciones aprobadas distintas a las pactadas' },
+      { id: 'sub-con-7', nombre: 'CAMBIO DE CONDICIONES', activa: true, descripcion: 'Modificación unilateral de condiciones del crédito o cambios sin previo aviso' },
+      { id: 'sub-con-8', nombre: 'CONDICIONES COMERCIALES', activa: true, descripcion: 'Ofertas comerciales, beneficios prometidos no aplicados o condiciones diferentes a la solicitud' },
+      { id: 'sub-con-9', nombre: 'CONDICIONES DESPUÉS DE MIGRACIÓN', activa: true, descripcion: 'Cambio de tasa, cuota o condiciones de la obligación tras un proceso de migración o cesión' },
+      { id: 'sub-con-10', nombre: 'OTRAS CONDICIONES DEL CRÉDITO', activa: true, descripcion: 'Inconformidad general o desacuerdo con las condiciones del crédito o leasing' }
+    ]
+  },
+  {
     id: 'cat-productos',
     nombre: 'PRODUCTOS',
     descripcion: 'Cancelación, activación o condiciones generales de cuentas y productos bancarios',

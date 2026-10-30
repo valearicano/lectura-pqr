@@ -329,21 +329,45 @@ export function detectProduct(
     return 'CUENTA DE AHORROS';
   }
 
-  if (fullText.includes('cuenta corriente') || fullText.includes('cta corriente')) {
+  if (fullText.includes('cuenta corriente') || /\bcta(\.|\s)+corriente/i.test(fullText)) {
     return 'CUENTA CORRIENTE';
   }
 
-  if (fullText.includes('cuenta') || fullText.includes('cta')) {
+  if (fullText.includes('cuenta de ahorros') || fullText.includes('cuenta') || /\bcta(\.|\b)/i.test(fullText)) {
     return 'CUENTA DE AHORROS';
+  }
+
+  if (fullText.includes('vivienda') || fullText.includes('hipotecari')) {
+    return 'CRÉDITO DE VIVIENDA';
+  }
+
+  if (fullText.includes('leasing')) {
+    return 'LEASING';
+  }
+
+  if (fullText.includes('libre inversion') || fullText.includes('libre inversión')) {
+    return 'CRÉDITO DE LIBRE INVERSIÓN';
+  }
+
+  if (fullText.includes('rotativo')) {
+    return 'CRÉDITO ROTATIVO';
+  }
+
+  if (fullText.includes('vehiculo') || fullText.includes('vehículo') || fullText.includes('automotriz') || fullText.includes('auto')) {
+    return 'CRÉDITO DE VEHÍCULO';
+  }
+
+  if (fullText.includes('consumo')) {
+    return 'CRÉDITO DE CONSUMO';
+  }
+
+  if (fullText.includes('libranza')) {
+    return 'LIBRANZA';
   }
 
   if (
     fullText.includes('credito') ||
     fullText.includes('prestamo') ||
-    fullText.includes('libranza') ||
-    fullText.includes('hipotecario') ||
-    fullText.includes('leasing') ||
-    fullText.includes('vivienda') ||
     fullText.includes('amortizacion') ||
     fullText.includes('plan de pagos') ||
     fullText.includes('plan de pago') ||
@@ -576,6 +600,48 @@ export function normalizeCategoryName(raw: string): { categoria_principal: strin
     return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'ESTADO DE OBLIGACIÓN / SALDOS' };
   }
 
+  // 11.1 CONDICIONES (CARTERA / CRÉDITOS)
+  if (
+    clean === 'CONDICIONES' ||
+    clean.includes('CONDICION') ||
+    clean.includes('TASA') ||
+    clean.includes('PLAZO DEL CREDITO') ||
+    clean.includes('CONDICIONES PACTADAS') ||
+    clean.includes('CAMBIO DE TASA') ||
+    clean.includes('CAMBIO DE CONDICIONES') ||
+    clean.includes('CONDICIONES COMERCIALES') ||
+    clean.includes('CONDICIONES DESPUES DE MIGRACION')
+  ) {
+    if (clean.includes('MIGRAC')) {
+      return { categoria_principal: 'CONDICIONES', subcategoria: 'CONDICIONES DESPUÉS DE MIGRACIÓN' };
+    }
+    if (clean.includes('CAMBIO DE TASA') || clean.includes('AUMENTO DE TASA') || clean.includes('TASA FIJA') || clean.includes('TASA VARIABLE')) {
+      return { categoria_principal: 'CONDICIONES', subcategoria: 'CAMBIO DE TASA' };
+    }
+    if (clean.includes('TASA')) {
+      return { categoria_principal: 'CONDICIONES', subcategoria: 'TASA DE INTERÉS' };
+    }
+    if (clean.includes('PLAZO')) {
+      return { categoria_principal: 'CONDICIONES', subcategoria: 'PLAZO DEL CRÉDITO' };
+    }
+    if (clean.includes('VALOR DE CUOTA') || clean.includes('CUOTA PACTADA') || clean.includes('CUOTA MAS ALTA') || clean.includes('CUOTA POR CONDICION')) {
+      return { categoria_principal: 'CONDICIONES', subcategoria: 'VALOR DE CUOTA POR CONDICIONES' };
+    }
+    if (clean.includes('MODALIDAD')) {
+      return { categoria_principal: 'CONDICIONES', subcategoria: 'MODALIDAD DE FINANCIACIÓN' };
+    }
+    if (clean.includes('COMERCIAL')) {
+      return { categoria_principal: 'CONDICIONES', subcategoria: 'CONDICIONES COMERCIALES' };
+    }
+    if (clean.includes('PACTAD') || clean.includes('OFRECID') || clean.includes('INFORMAD')) {
+      return { categoria_principal: 'CONDICIONES', subcategoria: 'CONDICIONES PACTADAS NO RESPETADAS' };
+    }
+    if (clean.includes('CAMBIO') || clean.includes('MODIFICAC')) {
+      return { categoria_principal: 'CONDICIONES', subcategoria: 'CAMBIO DE CONDICIONES' };
+    }
+    return { categoria_principal: 'CONDICIONES', subcategoria: 'OTRAS CONDICIONES DEL CRÉDITO' };
+  }
+
   // 12. PRODUCTOS
   if (clean.includes('CANCEL') && (clean.includes('PRODUCT') || clean.includes('CUENTA') || clean.includes('TARJETA'))) {
     return { categoria_principal: 'PRODUCTOS', subcategoria: 'CANCELACIÓN DE PRODUCTOS' };
@@ -583,7 +649,7 @@ export function normalizeCategoryName(raw: string): { categoria_principal: strin
   if (clean.includes('ACTIVAC')) {
     return { categoria_principal: 'PRODUCTOS', subcategoria: 'ACTIVACIÓN DE PRODUCTOS' };
   }
-  if (clean.includes('CONDICION') || clean.includes('TASA') || clean.includes('BENEFICIO')) {
+  if (clean.includes('BENEFICIO') || clean.includes('PROGRAMA')) {
     return { categoria_principal: 'PRODUCTOS', subcategoria: 'CONDICIONES DEL PRODUCTO' };
   }
 
@@ -682,6 +748,456 @@ export function extractFullContextText(record: PQRInputRecord): string {
     }
   }
   return parts.join(' ');
+}
+
+/**
+ * Deep contextual detection and subcategorization for CONDICIONES (CARTERA / CRÉDITOS)
+ */
+export function detectCondicionesCredito(
+  text: string,
+  submotivo: string,
+  detectedProduct: string
+): {
+  matches: boolean;
+  subcategoria: string;
+  intencion: string;
+  problema: string;
+  solicitud: string;
+  resumen: string;
+  evidencia: string;
+  producto_detectado: string;
+} {
+  const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const submotivoLower = (submotivo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const full = `${lower} ${submotivoLower}`;
+
+  // Helper to extract relevant snippet as evidence
+  const extractEvidence = (keywords: string[]): string => {
+    let bestPos = -1;
+    let matchedKw = '';
+    for (const kw of keywords) {
+      const pos = lower.indexOf(kw);
+      if (pos !== -1 && (bestPos === -1 || pos > bestPos)) {
+        bestPos = pos;
+        matchedKw = kw;
+      }
+    }
+    if (bestPos !== -1) {
+      const start = Math.max(0, bestPos - 30);
+      const end = Math.min(text.length, bestPos + matchedKw.length + 60);
+      return text.slice(start, end).trim();
+    }
+    return text.slice(0, 120);
+  };
+
+  // 1. DISAMBIGUATIONS & EXCLUSIONS
+  // Pure request for contract copy without dispute
+  const isContractCopyOnly =
+    (full.includes('copia de mi contrato') ||
+     full.includes('copia del contrato') ||
+     full.includes('copia de contrato') ||
+     full.includes('copia pagare') ||
+     full.includes('solicito mi contrato') ||
+     full.includes('envio de mi contrato') ||
+     full.includes('copia de pagare') ||
+     full.includes('copia del pagare')) &&
+    !(
+      full.includes('no acepto') ||
+      full.includes('no estoy de acuerdo') ||
+      full.includes('inconform') ||
+      full.includes('reclamo') ||
+      full.includes('cambiaron') ||
+      full.includes('modificaron') ||
+      full.includes('no es la que') ||
+      full.includes('no coincide') ||
+      full.includes('no corresponde') ||
+      full.includes('distint') ||
+      full.includes('diferente') ||
+      full.includes('no respetaron') ||
+      full.includes('sin autorizacion')
+    );
+
+  if (isContractCopyOnly) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
+  }
+
+  // Pure request for credit information without dispute
+  const isInfoOnly =
+    (full.includes('solicito informacion sobre mi credito') ||
+     full.includes('solicito informacion de mi credito') ||
+     full.includes('informacion sobre como funciona') ||
+     full.includes('como funciona un credito') ||
+     full.includes('como funciona el credito') ||
+     full.includes('solicito informacion sobre') ||
+     full.includes('certificado de deuda') ||
+     full.includes('certificado de saldo')) &&
+    !(
+      full.includes('no acepto') ||
+      full.includes('no estoy de acuerdo') ||
+      full.includes('inconform') ||
+      full.includes('reclamo') ||
+      full.includes('cambiaron') ||
+      full.includes('modificaron') ||
+      full.includes('no corresponde') ||
+      full.includes('no coinciden') ||
+      full.includes('no son las') ||
+      full.includes('no respetaron') ||
+      full.includes('diferente') ||
+      full.includes('superior')
+    );
+
+  if (isInfoOnly) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
+  }
+
+  // Pure late interest without rate/contract grievance
+  const isLateInterestOnly =
+    (full.includes('intereses de mora') ||
+     full.includes('interes de mora') ||
+     full.includes('intereses moratorios') ||
+     full.includes('interes moratorio') ||
+     full.includes('cobro de mora')) &&
+    !(
+      full.includes('tasa') ||
+      full.includes('condicion') ||
+      full.includes('plazo') ||
+      full.includes('pactad') ||
+      full.includes('ofrecid') ||
+      full.includes('migrac')
+    );
+
+  if (isLateInterestOnly) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
+  }
+
+  // Pure credit card management fee without credit conditions grievance
+  const isCuotaManejoPure =
+    (full.includes('cuota de manejo') || full.includes('cuotas de manejo')) &&
+    !(
+      full.includes('tasa') ||
+      full.includes('condiciones de mi credito') ||
+      full.includes('condiciones del credito') ||
+      full.includes('plazo del credito') ||
+      full.includes('condiciones del leasing')
+    );
+
+  if (isCuotaManejoPure) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
+  }
+
+  // Product resolution
+  let prod = 'CRÉDITO / CARTERA';
+  if (full.includes('leasing')) prod = 'LEASING';
+  else if (full.includes('vivienda') || full.includes('hipotecari')) prod = 'CRÉDITO DE VIVIENDA';
+  else if (full.includes('libre inversion') || full.includes('libre inversión')) prod = 'CRÉDITO DE LIBRE INVERSIÓN';
+  else if (full.includes('rotativo')) prod = 'CRÉDITO ROTATIVO';
+  else if (full.includes('vehiculo') || full.includes('vehículo') || full.includes('auto') || full.includes('automotriz')) prod = 'CRÉDITO DE VEHÍCULO';
+  else if (full.includes('consumo')) prod = 'CRÉDITO DE CONSUMO';
+  else if (full.includes('libranza')) prod = 'LIBRANZA';
+  else if (detectedProduct && detectedProduct !== 'NO ESPECIFICADO') prod = detectedProduct;
+
+  // 2. DETECTOR TRIGGERS
+
+  // A. Tasa de Interés / Cambio de Tasa signals
+  const hasRateKeywords =
+    full.includes('tasa de interes') ||
+    full.includes('tasa de mi credito') ||
+    full.includes('tasa de mi obligacion') ||
+    full.includes('tasa asignada') ||
+    full.includes('tasa que me colocaron') ||
+    full.includes('tasa que me asignaron') ||
+    full.includes('tasa que le asignaron') ||
+    full.includes('tasa que tenia') ||
+    full.includes('esa tasa no es la acordada') ||
+    full.includes('tasa no es la acordada') ||
+    full.includes('tasa diferente') ||
+    full.includes('tasa incorrecta') ||
+    full.includes('tasa errada') ||
+    full.includes('tasa superior') ||
+    full.includes('tasa del contrato') ||
+    full.includes('tasa preferencial') ||
+    full.includes('tasa fija') ||
+    full.includes('tasa variable') ||
+    full.includes('tasa efectiva anual') ||
+    full.includes('tasa nominal') ||
+    full.includes('cambio de tasa') ||
+    full.includes('cambiaron la tasa') ||
+    full.includes('cambio la tasa') ||
+    full.includes('modificaron la tasa') ||
+    full.includes('aumentaron la tasa') ||
+    full.includes('aumento de tasa') ||
+    full.includes('aumento la tasa') ||
+    full.includes('subieron la tasa') ||
+    full.includes('incrementaron la tasa') ||
+    full.includes('revisar la tasa') ||
+    full.includes('revisen la tasa') ||
+    full.includes('no acepto la tasa') ||
+    full.includes('no acepto esa tasa') ||
+    full.includes('no acepto esta tasa') ||
+    full.includes('no estoy de acuerdo con la tasa') ||
+    full.includes('desacuerdo con la tasa') ||
+    full.includes('inconforme con la tasa') ||
+    full.includes('intereses no corresponde a la tasa') ||
+    full.includes('intereses no corresponden a la tasa') ||
+    (full.includes('tasa') && (
+      full.includes('no es la que') ||
+      full.includes('no corresponde') ||
+      full.includes('otra') ||
+      full.includes('cobrando de mas') ||
+      full.includes('muy alta') ||
+      full.includes('pactada') ||
+      full.includes('ofrecida') ||
+      full.includes('acordada')
+    ));
+
+  // B. Plazo del crédito signals
+  const hasTermKeywords =
+    full.includes('plazo asignado') ||
+    full.includes('plazo del credito') ||
+    full.includes('plazo de mi credito') ||
+    full.includes('modificaron el plazo') ||
+    full.includes('cambiaron el plazo') ||
+    full.includes('plazo diferente') ||
+    full.includes('tiempo de financiacion') ||
+    full.includes('mas cuotas de las pactadas') ||
+    full.includes('mas cuotas de las acordadas') ||
+    full.includes('ampliacion o modificacion del plazo') ||
+    full.includes('modificacion del plazo') ||
+    (full.includes('plazo') && (
+      full.includes('no estoy de acuerdo') ||
+      full.includes('no acepto') ||
+      full.includes('inconforme') ||
+      full.includes('acordado') ||
+      full.includes('pactado') ||
+      full.includes('ofrecido')
+    ));
+
+  // C. Valor de cuota por condiciones signals
+  const hasInstallmentConditionKeywords =
+    full.includes('cuota mensual quedo mas alta de lo informado') ||
+    full.includes('cuota mas alta de lo informado') ||
+    full.includes('cuota mas alta de lo pactado') ||
+    full.includes('cuota mas alta de lo ofrecido') ||
+    full.includes('valor de la cuota no corresponde a lo acordado') ||
+    full.includes('cuota no corresponde a lo acordado') ||
+    full.includes('cuota no corresponde a lo pactado') ||
+    full.includes('cuota quedo diferente a la pactada') ||
+    full.includes('cuota diferente a la pactada') ||
+    full.includes('cuota diferente a la acordada') ||
+    full.includes('modificaron la cuota despues de cambiar las condiciones') ||
+    full.includes('ofrecieron una cuota diferente') ||
+    full.includes('plan de pagos no respeta las condiciones') ||
+    full.includes('plan de pago no respeta las condiciones') ||
+    (full.includes('cuota') && (
+      full.includes('diferente a la pactada') ||
+      full.includes('distinta a la pactada') ||
+      full.includes('no corresponde a lo pactado') ||
+      full.includes('no corresponde a lo acordado') ||
+      full.includes('no es la pactada') ||
+      full.includes('no es la acordada') ||
+      full.includes('no es la que me ofrecieron')
+    ));
+
+  // D. Modalidad de financiación signals
+  const hasModalityKeywords =
+    full.includes('modalidad del credito') ||
+    full.includes('modalidad de credito') ||
+    full.includes('modalidad diferente') ||
+    full.includes('condiciones de financiacion') ||
+    full.includes('forma de financiacion') ||
+    full.includes('financiacion aplicada no corresponde') ||
+    full.includes('forma de liquidar mi credito') ||
+    full.includes('condiciones del producto contratado');
+
+  // E. Migración signals
+  const hasMigrationKeywords =
+    full.includes('despues de la migracion') ||
+    full.includes('tras la migracion') ||
+    full.includes('proceso de migracion') ||
+    full.includes('migracion cambiaron') ||
+    full.includes('cambio despues de una migracion') ||
+    (full.includes('migrac') && (
+      full.includes('condicion') ||
+      full.includes('tasa') ||
+      full.includes('cuota') ||
+      full.includes('obligacion')
+    ));
+
+  // F. Condiciones comerciales signals
+  const hasCommercialKeywords =
+    full.includes('condiciones comerciales') ||
+    full.includes('no respetaron las condiciones comerciales') ||
+    full.includes('no cumplieron las condiciones comerciales') ||
+    full.includes('condiciones al momento de la solicitud') ||
+    (full.includes('beneficios') && (full.includes('no aplicaron') || full.includes('no cumplieron') || full.includes('ofrecieron beneficios')));
+
+  // G. Condiciones pactadas no respetadas signals
+  const hasBrokenPactKeywords =
+    full.includes('no respetaron lo que me habian informado') ||
+    full.includes('no respetaron lo informado') ||
+    full.includes('las condiciones que me aplicaron no son las que me ofrecieron') ||
+    full.includes('condiciones que me aplicaron no son') ||
+    full.includes('condiciones distintas a las pactadas') ||
+    full.includes('condiciones diferentes a las pactadas') ||
+    full.includes('no respetaron lo pactado') ||
+    full.includes('no respetaron lo acordado') ||
+    full.includes('no respetaron la negociacion inicial') ||
+    full.includes('condiciones aprobadas no coinciden') ||
+    full.includes('condiciones aprobadas distintas') ||
+    full.includes('condiciones que me ofrecieron') ||
+    full.includes('ofrecieron unas condiciones diferentes') ||
+    full.includes('condiciones distintas a las acordadas');
+
+  // H. Cambio de condiciones signals
+  const hasConditionChangeKeywords =
+    full.includes('cambiaron las condiciones') ||
+    full.includes('cambio de condiciones') ||
+    full.includes('cambiaron condiciones') ||
+    full.includes('modificaron unilateralmente') ||
+    full.includes('modificacion unilateral') ||
+    full.includes('modificaron las condiciones') ||
+    full.includes('no acepto las nuevas condiciones') ||
+    full.includes('nuevas condiciones') ||
+    full.includes('no fui informado del cambio') ||
+    full.includes('tenia unas condiciones y ahora aparecen otras') ||
+    full.includes('aparecen otras condiciones') ||
+    full.includes('respeten las condiciones originales') ||
+    full.includes('modificacion aplicada');
+
+  // I. General credit conditions dissatisfaction
+  const hasGeneralConditionsKeywords =
+    full.includes('no estoy de acuerdo con las condiciones de mi credito') ||
+    full.includes('no acepto las condiciones de mi producto') ||
+    full.includes('no estoy conforme con mi credito') ||
+    full.includes('no estoy de acuerdo con las condiciones del leasing') ||
+    full.includes('no estoy conforme con las condiciones') ||
+    full.includes('no estoy de acuerdo con las condiciones') ||
+    full.includes('desacuerdo con las condiciones') ||
+    full.includes('inconforme con las condiciones') ||
+    (full.includes('condiciones') && (
+      full.includes('credito') ||
+      full.includes('prestamo') ||
+      full.includes('leasing') ||
+      full.includes('obligacion') ||
+      full.includes('libranza')
+    ) && (
+      full.includes('no estoy de acuerdo') ||
+      full.includes('no acepto') ||
+      full.includes('inconform') ||
+      full.includes('reclamo') ||
+      full.includes('disconform')
+    ));
+
+  const isCondicionesMatch =
+    hasMigrationKeywords ||
+    hasRateKeywords ||
+    hasTermKeywords ||
+    hasInstallmentConditionKeywords ||
+    hasModalityKeywords ||
+    hasCommercialKeywords ||
+    hasBrokenPactKeywords ||
+    hasConditionChangeKeywords ||
+    hasGeneralConditionsKeywords;
+
+  if (!isCondicionesMatch) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
+  }
+
+  // 3. SUBCATEGORY DETERMINATION (Hierarchical / Exact)
+  let sub = 'OTRAS CONDICIONES DEL CRÉDITO';
+  let intencion = 'Revisión y aclaración de condiciones pactadas del crédito';
+  let problema = 'Discrepancia o inconformidad con condiciones del crédito';
+  let solicitud = 'Revisión y ajuste a las condiciones ofrecidas y pactadas';
+  let matchedKws: string[] = ['condiciones'];
+
+  if (hasMigrationKeywords) {
+    sub = 'CONDICIONES DESPUÉS DE MIGRACIÓN';
+    intencion = 'Inconformidad con cambio de tasa, cuota o condiciones tras migración de la obligación';
+    problema = 'Modificación de condiciones del crédito posterior a proceso de migración o cesión';
+    solicitud = 'Restablecer condiciones originales previas a la migración de la obligación';
+    matchedKws = ['migracion', 'tras la migracion', 'despues de la migracion'];
+  } else if (
+    full.includes('aumentaron la tasa') ||
+    full.includes('aumento de tasa') ||
+    full.includes('aumento la tasa') ||
+    full.includes('subieron la tasa') ||
+    full.includes('incrementaron la tasa') ||
+    full.includes('cambiaron la tasa') ||
+    full.includes('cambio de tasa') ||
+    full.includes('tasa no es la que tenia') ||
+    full.includes('tasa que tenia anteriormente') ||
+    full.includes('tasa fija se convirtio en variable') ||
+    full.includes('tasa fija y me aplicaron una variable') ||
+    full.includes('tasa fija a variable') ||
+    full.includes('no me explicaron el cambio de tasa')
+  ) {
+    sub = 'CAMBIO DE TASA';
+    intencion = 'Reclamo por incremento, modificación o conversión de tasa fija a variable';
+    problema = 'Aumento o cambio unilateral de la tasa de interés de la obligación';
+    solicitud = 'Ajustar la tasa de interés a la pactada y reliquidar valores cobrados en exceso';
+    matchedKws = ['aumentaron la tasa', 'cambiaron la tasa', 'tasa fija', 'variable', 'cambio de tasa', 'tasa no es la que tenia'];
+  } else if (hasRateKeywords) {
+    sub = 'TASA DE INTERÉS';
+    intencion = 'Inconformidad con la tasa de interés asignada o aplicada al crédito';
+    problema = 'Tasa de interés aplicada diferente o superior a la pactada u ofrecida';
+    solicitud = 'Revisión y aplicación de la tasa de interés acordada en la adquisición del crédito';
+    matchedKws = ['tasa de interes', 'no acepto la tasa', 'tasa que me colocaron', 'tasa incorrecta', 'tasa superior', 'tasa acordada'];
+  } else if (hasTermKeywords) {
+    sub = 'PLAZO DEL CRÉDITO';
+    intencion = 'Inconformidad por modificación del plazo o número de cuotas del crédito';
+    problema = 'Plazo asignado o número de cuotas no corresponde al tiempo acordado';
+    solicitud = 'Ajuste del plazo y número de cuotas a los términos pactados';
+    matchedKws = ['modificaron el plazo', 'plazo asignado', 'plazo del credito', 'mas cuotas de las pactadas'];
+  } else if (hasInstallmentConditionKeywords) {
+    sub = 'VALOR DE CUOTA POR CONDICIONES';
+    intencion = 'Inconformidad con valor de cuota mensual que no respeta las condiciones acordadas';
+    problema = 'Cuota mensual liquidada por valor superior o diferente al pactado según condiciones';
+    solicitud = 'Ajustar el valor de la cuota mensual a las condiciones pactadas';
+    matchedKws = ['cuota quedo diferente a la pactada', 'cuota mas alta de lo informado', 'plan de pagos no respeta las condiciones'];
+  } else if (hasModalityKeywords) {
+    sub = 'MODALIDAD DE FINANCIACIÓN';
+    intencion = 'Desacuerdo con la modalidad de crédito o forma de liquidación aplicada';
+    problema = 'Modalidad de crédito o condiciones de financiación distintas a las ofrecidas';
+    solicitud = 'Ajustar la modalidad y forma de liquidación a lo ofrecido inicialmente';
+    matchedKws = ['modalidad del credito', 'condiciones de financiacion', 'forma de liquidar'];
+  } else if (hasCommercialKeywords) {
+    sub = 'CONDICIONES COMERCIALES';
+    intencion = 'Reclamo por incumplimiento de condiciones comerciales o beneficios ofrecidos';
+    problema = 'No aplicación de beneficios o condiciones comerciales informadas en la solicitud';
+    solicitud = 'Cumplimiento de las condiciones comerciales y beneficios ofrecidos';
+    matchedKws = ['condiciones comerciales', 'beneficios que no aplicaron', 'oferta comercial'];
+  } else if (hasBrokenPactKeywords) {
+    sub = 'CONDICIONES PACTADAS NO RESPETADAS';
+    intencion = 'Inconformidad porque las condiciones aplicadas no corresponden a las acordadas';
+    problema = 'Incumplimiento de las condiciones acordadas o negociación inicial del crédito';
+    solicitud = 'Respetar las condiciones aprobadas y pactadas al adquirir la obligación';
+    matchedKws = ['no respetaron lo que me habian informado', 'condiciones distintas a las pactadas', 'no respetaron lo pactado'];
+  } else if (hasConditionChangeKeywords) {
+    sub = 'CAMBIO DE CONDICIONES';
+    intencion = 'Inconformidad por modificación unilateral de las condiciones de la obligación';
+    problema = 'Cambio unilateral de condiciones del crédito sin previo aviso o autorización';
+    solicitud = 'Restablecer las condiciones contractuales originales de la obligación';
+    matchedKws = ['cambiaron las condiciones', 'modificaron unilateralmente', 'nuevas condiciones'];
+  } else {
+    sub = 'OTRAS CONDICIONES DEL CRÉDITO';
+    intencion = 'Inconformidad o desacuerdo general con las condiciones del crédito';
+    problema = `Inconformidad con las condiciones aplicadas en ${prod.toLowerCase()}`;
+    solicitud = 'Revisión y aclaración integral de las condiciones del crédito';
+    matchedKws = ['condiciones de mi credito', 'condiciones del leasing', 'condiciones'];
+  }
+
+  const evidencia = extractEvidence(matchedKws);
+
+  return {
+    matches: true,
+    subcategoria: sub,
+    intencion,
+    problema,
+    solicitud,
+    resumen: generateConciseSummary(text, 'CONDICIONES', sub, prod, `Cliente manifiesta inconformidad con ${sub.toLowerCase()} en su obligación crediticia.`),
+    evidencia,
+    producto_detectado: prod
+  };
 }
 
 /**
@@ -1372,8 +1888,9 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // Pre-run deep contextual detectors for Cuotas de Crédito, Cuotas de Manejo and Honorarios/Gastos de Cobranza
+  // Pre-run deep contextual detectors for Cuotas de Crédito, Condiciones, Cuotas de Manejo and Honorarios/Gastos de Cobranza
   const creditoRes = detectCreditoCarteraCuotas(fullContextText, record.submotivo_original || '', detectedProduct);
+  const condicionesRes = detectCondicionesCredito(fullContextText, record.submotivo_original || '', detectedProduct);
   const cuotaRes = detectCuotasDeManejo(fullContextText, record.submotivo_original || '', detectedProduct);
   const cobranzaRes = detectHonorariosCobranza(fullContextText, record.submotivo_original || '', detectedProduct);
 
@@ -1385,15 +1902,16 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   // =========================================================================
   // PRIORIDAD 1: FRAUDES
   // Si el cliente manifiesta que NO reconoce una operación, compra, producto o movimiento.
-  // Exception: insurance enrollment disputes, cuotas de manejo disputes, and cobranza disputes
+  // Exception: insurance enrollment disputes, condiciones, cuotas de manejo disputes, and cobranza disputes
   // belong to their specific business rule categories.
   // =========================================================================
   const isInsuranceDispute = lower.includes('seguro') || lower.includes('poliza');
+  const isCondicionesDispute = condicionesRes.matches;
   const isCuotaManejoDispute = cuotaRes.matches;
   const isCobranzaDispute = cobranzaRes.matches;
 
   const isFraudManifestation =
-    !isInsuranceDispute && !isCuotaManejoDispute && !isCobranzaDispute && (
+    !isInsuranceDispute && !isCondicionesDispute && !isCuotaManejoDispute && !isCobranzaDispute && (
       lower.includes('no reconozco') ||
       lower.includes('no reconoce') ||
       lower.includes('no reconocid') ||
@@ -1739,9 +2257,73 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   }
 
   // =========================================================================
-  // PRIORIDAD 6: CUOTAS DE CRÉDITO / CUOTAS DE MANEJO / COBRANZA
+  // PRIORIDAD 6: CONDICIONES / CUOTAS DE CRÉDITO / CUOTAS DE MANEJO / COBRANZA
   // Detección profunda y contextual con desambiguación y soporte concurrente
   // =========================================================================
+
+  // 6.0 Concurrencia entre Condiciones y Cuotas de Manejo
+  if (condicionesRes.matches && cuotaRes.matches) {
+    const condicionKeywords = ['tasa', 'condicion', 'plazo', 'pactad', 'migrac'];
+    const cuotaKeywords = ['cuota de manejo', 'cuotas de manejo', 'cuota manejo', 'administracion de la tarjeta'];
+
+    let firstCondicionPos = 999999;
+    for (const kw of condicionKeywords) {
+      const idx = fullLower.indexOf(kw);
+      if (idx !== -1 && idx < firstCondicionPos) firstCondicionPos = idx;
+    }
+    let firstCuotaPos = 999999;
+    for (const kw of cuotaKeywords) {
+      const idx = fullLower.indexOf(kw);
+      if (idx !== -1 && idx < firstCuotaPos) firstCuotaPos = idx;
+    }
+
+    if (firstCondicionPos <= firstCuotaPos) {
+      return {
+        expediente,
+        categoria_principal: 'CONDICIONES',
+        subcategoria: condicionesRes.subcategoria,
+        resumen_requerimiento: `${condicionesRes.resumen} Adicionalmente reclama por cuota de manejo.`,
+        intencion_cliente: `${condicionesRes.intencion}. Incluye reclamo concurrente sobre cuota de manejo.`,
+        confianza: 98,
+        requiere_revision_humana: false,
+        producto_detectado: condicionesRes.producto_detectado,
+        problema_principal: `${condicionesRes.problema} y cobro de cuota de manejo`,
+        solicitud_cliente: `${condicionesRes.solicitud} y revisión de cuota de manejo facturada`,
+        evidencia_textual: condicionesRes.evidencia
+      };
+    } else {
+      return {
+        expediente,
+        categoria_principal: 'CUOTAS DE MANEJO',
+        subcategoria: cuotaRes.subcategoria,
+        resumen_requerimiento: `${cuotaRes.resumen} Adicionalmente reclama por condiciones del crédito.`,
+        intencion_cliente: `${cuotaRes.intencion}. Incluye reclamo concurrente sobre condiciones del crédito.`,
+        confianza: 98,
+        requiere_revision_humana: false,
+        producto_detectado: detectedProduct !== 'NO ESPECIFICADO' ? detectedProduct : 'TARJETA DE CRÉDITO',
+        problema_principal: `${cuotaRes.problema} y condiciones de crédito`,
+        solicitud_cliente: `${cuotaRes.solicitud} y revisión de condiciones`,
+        evidencia_textual: rawText.slice(0, 100)
+      };
+    }
+  }
+
+  // 6.01 CONDICIONES (CARTERA / CRÉDITOS)
+  if (condicionesRes.matches) {
+    return {
+      expediente,
+      categoria_principal: 'CONDICIONES',
+      subcategoria: condicionesRes.subcategoria,
+      resumen_requerimiento: condicionesRes.resumen,
+      intencion_cliente: condicionesRes.intencion,
+      confianza: 98,
+      requiere_revision_humana: false,
+      producto_detectado: condicionesRes.producto_detectado,
+      problema_principal: condicionesRes.problema,
+      solicitud_cliente: condicionesRes.solicitud,
+      evidencia_textual: condicionesRes.evidencia
+    };
+  }
 
   // 6.1 Concurrencia entre Cuotas de Crédito y Cuotas de Manejo (ej. Caso 8)
   if (creditoRes.matches && cuotaRes.matches) {
@@ -2253,19 +2835,35 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // 8.13 INFORMACIÓN Y DOCUMENTOS: Paz y salvo, certificaciones
-  if (lower.includes('paz y salvo') || lower.includes('certificacion') || lower.includes('certificado') || lower.includes('copia de contrato') || lower.includes('derecho de peticion')) {
+  // 8.13 INFORMACIÓN Y DOCUMENTOS: Paz y salvo, certificaciones, copias de contrato y consultas informativas
+  if (
+    lower.includes('paz y salvo') ||
+    lower.includes('certificacion') ||
+    lower.includes('certificado') ||
+    lower.includes('copia de contrato') ||
+    lower.includes('copia de mi contrato') ||
+    lower.includes('copia del contrato') ||
+    lower.includes('copia pagare') ||
+    lower.includes('copia de pagare') ||
+    lower.includes('derecho de peticion') ||
+    lower.includes('solicito informacion sobre mi credito') ||
+    lower.includes('solicito informacion de mi credito') ||
+    lower.includes('informacion sobre como funciona')
+  ) {
+    const isDocOrContract = lower.includes('contrato') || lower.includes('extracto') || lower.includes('pagare');
+    const sub = isDocOrContract ? 'EXTRACTOS Y DOCUMENTOS' : 'CERTIFICADOS Y PAZ Y SALVO';
+    const intencion = isDocOrContract ? 'Solicitud de copia de contrato o documento contractual' : 'Solicitud de emisión o envío de documentos bancarios o certificaciones';
     return {
       expediente,
       categoria_principal: 'INFORMACIÓN Y DOCUMENTOS',
-      subcategoria: 'CERTIFICADOS Y PAZ Y SALVO',
-      resumen_requerimiento: generateConciseSummary(rawText, 'INFORMACIÓN Y DOCUMENTOS', 'CERTIFICADOS Y PAZ Y SALVO', detectedProduct, `Cliente solicita expedición de paz y salvo o certificación bancaria.`),
-      intencion_cliente: 'Solicitud de emisión o envío de documentos bancarios',
+      subcategoria: sub,
+      resumen_requerimiento: generateConciseSummary(rawText, 'INFORMACIÓN Y DOCUMENTOS', sub, detectedProduct, `Cliente solicita expedición de ${sub.toLowerCase()} o información documental.`),
+      intencion_cliente: intencion,
       confianza: 96,
       requiere_revision_humana: false,
       producto_detectado: detectedProduct,
-      problema_principal: 'Expedición de paz y salvo o certificado bancario',
-      solicitud_cliente: 'Envío del certificado o documento solicitado',
+      problema_principal: isDocOrContract ? 'Solicitud de copia de contrato o documento' : 'Expedición de certificado bancario o paz y salvo',
+      solicitud_cliente: isDocOrContract ? 'Envío de copia del contrato o soporte documental' : 'Envío del certificado o documento solicitado',
       evidencia_textual: rawText.slice(0, 100)
     };
   }
@@ -2592,6 +3190,51 @@ export function validateClassificationConsistency(
           solicitud_cliente: 'Aclarar a qué producto u obligación corresponde la cuota'
         };
       }
+    }
+  }
+
+  // 7. Contradiction: CONDICIONES assigned to pure contract copy or info request without discontent, or pure late interest
+  if (result.categoria_principal === 'CONDICIONES') {
+    const isContractCopyOnly =
+      (lower.includes('copia de mi contrato') || lower.includes('copia del contrato') || lower.includes('copia de contrato')) &&
+      !lower.includes('no acepto') && !lower.includes('no estoy de acuerdo') && !lower.includes('inconform') && !lower.includes('reclamo') && !lower.includes('cambiaron') && !lower.includes('modificaron');
+
+    if (isContractCopyOnly) {
+      return {
+        ...result,
+        categoria_principal: 'INFORMACIÓN Y DOCUMENTOS',
+        subcategoria: 'EXTRACTOS Y DOCUMENTOS',
+        existe_inconsistencia: 'SI',
+        motivo_inconsistencia: 'Solicitud de copia de contrato sin manifestación de inconformidad no constituye reclamo de condiciones.'
+      };
+    }
+
+    const isInfoOnly =
+      (lower.includes('solicito informacion sobre mi credito') || lower.includes('solicito informacion de mi credito')) &&
+      !lower.includes('no acepto') && !lower.includes('no estoy de acuerdo') && !lower.includes('inconform') && !lower.includes('reclamo');
+
+    if (isInfoOnly) {
+      return {
+        ...result,
+        categoria_principal: 'INFORMACIÓN Y DOCUMENTOS',
+        subcategoria: 'CERTIFICADOS Y PAZ Y SALVO',
+        existe_inconsistencia: 'SI',
+        motivo_inconsistencia: 'Consulta informativa sobre crédito sin inconformidad corresponde a información y documentos.'
+      };
+    }
+
+    const isLateInterestOnly =
+      (lower.includes('intereses de mora') || lower.includes('interes de mora') || lower.includes('intereses moratorios')) &&
+      !lower.includes('tasa') && !lower.includes('condicion') && !lower.includes('pactad') && !lower.includes('ofrecid');
+
+    if (isLateInterestOnly) {
+      return {
+        ...result,
+        categoria_principal: 'COMISIONES Y COBROS',
+        subcategoria: 'INTERESES',
+        existe_inconsistencia: 'SI',
+        motivo_inconsistencia: 'Reclamación exclusiva sobre cobro de intereses moratorios corresponde a comisiones y cobros.'
+      };
     }
   }
 
