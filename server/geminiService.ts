@@ -137,9 +137,18 @@ REGLAS DE PRIORIDAD ABSOLUTA:
    - CONDICIONES DESPUÉS DE MIGRACIÓN: Cambio de tasa, cuota o condiciones tras migración o cesión de cartera.
    - OTRAS CONDICIONES DEL CRÉDITO: Desacuerdo general con las condiciones del crédito o leasing.
 9. CRÉDITOS / CARTERA:
-   - Cuotas mensuales de crédito, aumentos de cuota, revisión de plan de pagos, tablas de amortización, leasing, vivienda o préstamos: CRÉDITOS / CARTERA > VALOR DE LA CUOTA Y PLAN DE PAGOS.
-   - Refinanciación y acuerdos de pago: CRÉDITOS / CARTERA > REFINANCIACIÓN Y ACUERDOS.
-   - Saldos y estado de obligación: CRÉDITOS / CARTERA > ESTADO DE OBLIGACIÓN / SALDOS.
+   - PLAN DE PAGOS: Inconsistencias, amortización, tabla de amortización, valores incorrectos o solicitud de plan de pagos del crédito.
+   - FRECH: Subsidio FRECH/FRESH/FRENCH, subsidio de vivienda, cobertura de tasa no aplicada o beneficio suspendido.
+   - AUMENTO DE CUOTA: Aumento o incremento en la cuota mensual del crédito, ahora paga más que antes, o cuota más alta post-migración Itaú.
+   - ENDOSO: Solicitud, radicación, confirmación o actualización de endoso de póliza de seguro asociada al crédito.
+   - REVERSIÓN: Solicitud de reversión o devolución de débito automático, cobro duplicado, cuota cobrada dos veces o descuento que afecta el mínimo vital.
+   - REAPLICACIONES: Petición explícita de reaplicar pagos o abonos a capital, reducción de cuota, plazo o cobertura de cuota.
+   - HÁBITO DE PAGO: Inconformidad porque los pagos no bajan el capital, todo se va a intereses o la deuda sigue igual pese a pagar.
+   - HISTÓRICO DE PAGO: Solicitud de reporte, relación, extracto histórico o certificado de los pagos realizados al crédito.
+   - TITULARES: Reclamación sobre titulares, falta de segundo titular, cotitular, codeudor o crédito que el cliente afirma que no es suyo.
+   - CAMBIO DE FECHA: Solicitud de cambio o traslado de la fecha de pago o vencimiento de la cuota mensual del crédito.
+   - REFINANCIACIÓN Y ACUERDOS: Acuerdos de pago, reestructuración o alivios de cartera.
+   - ESTADO DE OBLIGACIÓN / SALDOS: Saldos y estado general de la obligación crediticia.
 10. SEGUROS: Pólizas de vida, desempleo, seguros asociados a tarjeta o atados a crédito.
 11. TARJETAS DE CRÉDITO Y OPERATIVAS:
    - Pagos no aplicados o duplicados: PAGOS / ABONOS > APLICACIÓN DE PAGO.

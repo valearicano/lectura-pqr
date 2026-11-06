@@ -14,7 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { EnrichedPQRSRecord, CATEGORIAS_OFICIALES_16 } from '../types';
-import { exportEnrichedExcel, exportCategoriesSummaryExcel, exportItauPaymentsExcel } from '../services/excelService';
+import { exportEnrichedExcel, exportCategoriesSummaryExcel } from '../services/excelService';
 
 interface ExpedientesViewProps {
   records: EnrichedPQRSRecord[];
@@ -109,15 +109,6 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
           >
             <Download className="w-3.5 h-3.5 mr-1.5" />
             Excel Completo
-          </button>
-          <button
-            onClick={() => exportItauPaymentsExcel(records, 'BASE_ORIGINAL_PAGOS_ITAU.xlsx')}
-            disabled={records.length === 0}
-            className="px-3 py-2 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
-            title="Genera archivo Excel descargable con la base original y las columnas: CATEGORIA, FECHA DEL PAGO, VALOR DEL PAGO"
-          >
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Base + Pagos Itaú
           </button>
           <button
             onClick={() => exportEnrichedExcel(records, 'PQRS_REQUIEREN_REVISION.xlsx', true)}

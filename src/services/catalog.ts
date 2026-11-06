@@ -163,12 +163,22 @@ export const DEFAULT_CATALOG: CategoryItem[] = [
   {
     id: 'cat-creditos',
     nombre: 'CRÉDITOS / CARTERA',
-    descripcion: 'Préstamos, libranzas, créditos de consumo o hipotecarios, acuerdos de pago y refinanciación',
+    descripcion: 'Reclamaciones, inconsistencias, trámites y solicitudes sobre créditos, préstamos, libranzas, leasing, vivienda o cartera bancaria',
     activa: true,
     subcategorias: [
-      { id: 'sub-cre-1', nombre: 'ESTADO DE OBLIGACIÓN / SALDOS', activa: true, descripcion: 'Consulta de saldo de crédito, plan de pagos y cuotas' },
-      { id: 'sub-cre-2', nombre: 'REFINANCIACIÓN Y ACUERDOS', activa: true, descripcion: 'Acuerdos de pago, reestructuración o alivios de cartera' },
-      { id: 'sub-cre-3', nombre: 'VALOR DE LA CUOTA Y PLAN DE PAGOS', activa: true, descripcion: 'Aumento, variación o inconsistencia en el valor de la cuota mensual de crédito, leasing, vivienda o plan de amortización' }
+      { id: 'sub-cre-plan', nombre: 'PLAN DE PAGOS', activa: true, descripcion: 'Solicitud, inconsistencias, valores incorrectos, amortización o diferencias en el plan de pagos del crédito' },
+      { id: 'sub-cre-frech', nombre: 'FRECH', activa: true, descripcion: 'Subsidio o cobertura de tasa de vivienda FRECH/FRESH/FRENCH no aplicado, suspendido o no reflejado en la cuota' },
+      { id: 'sub-cre-aum', nombre: 'AUMENTO DE CUOTA', activa: true, descripcion: 'Incremento, aumento no informado o cuota más alta que antes (incluso post-migración Itaú o tasa)' },
+      { id: 'sub-cre-end', nombre: 'ENDOSO', activa: true, descripcion: 'Trámite, radicación, aceptación o actualización de endoso de póliza de seguros de vida, vivienda o externa' },
+      { id: 'sub-cre-rev', nombre: 'REVERSIÓN', activa: true, descripcion: 'Reversión o devolución de débitos automáticos, pagos duplicados, cobros indebidos o descuentos que afectan el mínimo vital' },
+      { id: 'sub-cre-reap', nombre: 'REAPLICACIONES', activa: true, descripcion: 'Cambio de aplicación o imputación de pagos/abonos a capital, reducción de cuota, plazo o cobertura de cuota' },
+      { id: 'sub-cre-hab', nombre: 'HÁBITO DE PAGO', activa: true, descripcion: 'Inconformidad porque los pagos no disminuyen el capital, se van solo a intereses o la deuda no baja' },
+      { id: 'sub-cre-hist', nombre: 'HISTÓRICO DE PAGO', activa: true, descripcion: 'Solicitud de relación, certificado, reporte o verificación del historial de pagos efectuados al crédito' },
+      { id: 'sub-cre-tit', nombre: 'TITULARES', activa: true, descripcion: 'Inconsistencias en titularidad, falta de segundo titular, cotitular, codeudor o crédito que afirma no ser suyo' },
+      { id: 'sub-cre-fecha', nombre: 'CAMBIO DE FECHA', activa: true, descripcion: 'Solicitud para cambiar o trasladar la fecha mensual de pago o vencimiento de la cuota del crédito' },
+      { id: 'sub-cre-ref', nombre: 'REFINANCIACIÓN Y ACUERDOS', activa: true, descripcion: 'Acuerdos de pago, reestructuración o alivios de cartera' },
+      { id: 'sub-cre-est', nombre: 'ESTADO DE OBLIGACIÓN / SALDOS', activa: true, descripcion: 'Consulta de saldo de crédito y estado general de la obligación' },
+      { id: 'sub-cre-leg', nombre: 'VALOR DE LA CUOTA Y PLAN DE PAGOS', activa: true, descripcion: 'Variación general en cuota mensual o plan de amortización' }
     ]
   },
   {

@@ -333,11 +333,7 @@ export function detectProduct(
     return 'CUENTA CORRIENTE';
   }
 
-  if (fullText.includes('cuenta de ahorros') || fullText.includes('cuenta') || /\bcta(\.|\b)/i.test(fullText)) {
-    return 'CUENTA DE AHORROS';
-  }
-
-  if (fullText.includes('vivienda') || fullText.includes('hipotecari')) {
+  if (fullText.includes('vivienda') || fullText.includes('hipotecari') || fullText.includes('frech') || fullText.includes('fresh') || fullText.includes('french')) {
     return 'CRÉDITO DE VIVIENDA';
   }
 
@@ -361,7 +357,7 @@ export function detectProduct(
     return 'CRÉDITO DE CONSUMO';
   }
 
-  if (fullText.includes('libranza')) {
+  if (fullText.includes('libranza') || fullText.includes('nomina') || fullText.includes('descuento de nomina')) {
     return 'LIBRANZA';
   }
 
@@ -371,9 +367,14 @@ export function detectProduct(
     fullText.includes('amortizacion') ||
     fullText.includes('plan de pagos') ||
     fullText.includes('plan de pago') ||
-    fullText.includes('cartera')
+    fullText.includes('cartera') ||
+    fullText.includes('obligacion crediticia')
   ) {
     return 'CRÉDITO / CARTERA';
+  }
+
+  if (fullText.includes('cuenta de ahorros') || fullText.includes('cuenta') || /\bcta(\.|\b)/i.test(fullText)) {
+    return 'CUENTA DE AHORROS';
   }
 
   if (fullText.includes('seguro') || fullText.includes('poliza')) {
@@ -578,8 +579,10 @@ export function normalizeCategoryName(raw: string): { categoria_principal: strin
     return { categoria_principal: 'INFORMACIÓN Y DOCUMENTOS', subcategoria: 'EXTRACTOS Y DOCUMENTOS' };
   }
 
-  // 11. CRÉDITOS / CARTERA
+  // 11. CRÉDITOS / CARTERA (y CARTERA / CRÉDITOS)
   if (
+    clean === 'CARTERA / CREDITOS' ||
+    clean === 'CREDITOS / CARTERA' ||
     (clean.includes('CREDITO') && !clean.includes('TARJETA DE CREDITO') && !clean.includes('TARJETA CREDITO')) ||
     clean.includes('CARTERA') ||
     clean.includes('PRESTAMO') ||
@@ -589,15 +592,52 @@ export function normalizeCategoryName(raw: string): { categoria_principal: strin
     clean.includes('PLAN DE PAGO') ||
     clean.includes('AMORTIZAC') ||
     clean.includes('CUOTA DE CREDITO') ||
-    clean.includes('CUOTAS DE CREDITO')
+    clean.includes('CUOTAS DE CREDITO') ||
+    clean.includes('FRECH') ||
+    clean.includes('FRESH') ||
+    clean.includes('FRENCH') ||
+    clean.includes('FRESCH') ||
+    clean.includes('ENDOSO') ||
+    clean.includes('REAPLICAC') ||
+    clean.includes('HABITO DE PAGO') ||
+    clean.includes('HISTORICO DE PAGO') ||
+    clean.includes('TITULAR') ||
+    clean.includes('CAMBIO DE FECHA')
   ) {
-    if (clean.includes('PLAN DE PAGO') || clean.includes('CUOTA') || clean.includes('AMORTIZAC')) {
-      return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'VALOR DE LA CUOTA Y PLAN DE PAGOS' };
+    if (clean.includes('FRECH') || clean.includes('FRESH') || clean.includes('FRENCH') || clean.includes('FRESCH') || clean.includes('SUBSIDIO DE VIVIENDA')) {
+      return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'FRECH' };
+    }
+    if (clean.includes('ENDOSO')) {
+      return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'ENDOSO' };
+    }
+    if (clean.includes('REAPLICAC') || clean.includes('ABONO A CAPITAL')) {
+      return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'REAPLICACIONES' };
+    }
+    if (clean.includes('HABITO DE PAGO') || clean.includes('NO DISMINUYE') || clean.includes('SOLO A INTERESES')) {
+      return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'HÁBITO DE PAGO' };
+    }
+    if (clean.includes('HISTORICO DE PAGO') || clean.includes('HISTORIAL DE PAGO')) {
+      return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'HISTÓRICO DE PAGO' };
+    }
+    if (clean.includes('TITULAR') || clean.includes('CODEUDOR') || clean.includes('COTITULAR')) {
+      return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'TITULARES' };
+    }
+    if (clean.includes('CAMBIO DE FECHA') || clean.includes('FECHA DE PAGO') || clean.includes('FECHA DE VENCIMIENTO')) {
+      return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'CAMBIO DE FECHA' };
+    }
+    if (clean.includes('REVERSION') || clean.includes('PAGO DOBLE') || clean.includes('MINIMO VITAL')) {
+      return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'REVERSIÓN' };
+    }
+    if (clean.includes('AUMENTO DE CUOTA') || clean.includes('INCREMENTO DE CUOTA') || clean.includes('CUOTA SUBIO') || clean.includes('PAGO MAS')) {
+      return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'AUMENTO DE CUOTA' };
+    }
+    if (clean.includes('PLAN DE PAGO') || clean.includes('AMORTIZAC')) {
+      return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'PLAN DE PAGOS' };
     }
     if (clean.includes('REFINANC') || clean.includes('ACUERDO') || clean.includes('ALIVIO')) {
       return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'REFINANCIACIÓN Y ACUERDOS' };
     }
-    return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'ESTADO DE OBLIGACIÓN / SALDOS' };
+    return { categoria_principal: 'CRÉDITOS / CARTERA', subcategoria: 'PLAN DE PAGOS' };
   }
 
   // 11.1 CONDICIONES (CARTERA / CRÉDITOS)
@@ -1202,9 +1242,22 @@ export function detectCondicionesCredito(
 
 /**
  * Deep contextual detection and subcategorization for CRÉDITOS / CARTERA
- * specifically for loan/credit installments, payment plans, amortization, and adjustments.
+ * Supporting all 10 official subcategories:
+ * 1. PLAN DE PAGOS
+ * 2. FRECH
+ * 3. AUMENTO DE CUOTA
+ * 4. ENDOSO
+ * 5. REVERSIÓN
+ * 6. REAPLICACIONES
+ * 7. HÁBITO DE PAGO
+ * 8. HISTÓRICO DE PAGO
+ * 9. TITULARES
+ * 10. CAMBIO DE FECHA
+ * Plus backwards-compatible secondary subcategories:
+ * - REFINANCIACIÓN Y ACUERDOS
+ * - ESTADO DE OBLIGACIÓN / SALDOS
  */
-export function detectCreditoCarteraCuotas(
+export function detectCreditoCartera(
   text: string,
   submotivo: string,
   detectedProduct: string
@@ -1215,6 +1268,8 @@ export function detectCreditoCarteraCuotas(
   problema: string;
   solicitud: string;
   resumen: string;
+  evidencia: string;
+  producto_detectado: string;
 } {
   const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const submotivoLower = (submotivo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -1227,11 +1282,534 @@ export function detectCreditoCarteraCuotas(
     !full.includes('credito de vivienda') && !full.includes('leasing') && !full.includes('libranza') && !full.includes('prestamo');
 
   if (isCardDeferredPurchase) {
-    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '' };
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
   }
 
-  // Explicit credit / loan / installment obligation signals
-  const hasCreditTerm =
+  // Credit card payment issues belong to PAGOS / ABONOS or PAGO A ITAU, not CRÉDITOS / CARTERA
+  const isCreditCardPayment =
+    (full.includes('tarjeta de credito') || full.includes('tarjeta credito') || detectedProduct === 'TARJETA DE CRÉDITO') &&
+    (full.includes('pago de la tarjeta') || full.includes('pago de mi tarjeta') || full.includes('pague mi tarjeta') || full.includes('pago de tarjeta')) &&
+    !full.includes('credito de vivienda') && !full.includes('leasing') && !full.includes('libranza') && !full.includes('prestamo') && !full.includes('cartera') && !full.includes('frech');
+
+  if (isCreditCardPayment) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
+  }
+
+  // Pure cuota de manejo belongs to CUOTAS DE MANEJO
+  const hasCreditContext =
+    full.includes('credito') ||
+    full.includes('prestamo') ||
+    full.includes('vivienda') ||
+    full.includes('leasing') ||
+    full.includes('libranza') ||
+    full.includes('cartera') ||
+    full.includes('plan de pagos') ||
+    full.includes('plan de pago') ||
+    full.includes('amortizacion') ||
+    full.includes('aumentaron la cuota') ||
+    full.includes('aumento la cuota') ||
+    full.includes('aumento de cuota') ||
+    full.includes('cuota del credito') ||
+    full.includes('cuota de credito');
+
+  const isPureCuotaManejo =
+    (full.includes('cuota de manejo') || full.includes('cuotas de manejo') || full.includes('tarifa de manejo')) &&
+    !hasCreditContext;
+
+  if (isPureCuotaManejo) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
+  }
+
+  // Pure debt collection charges belong to HONORARIOS Y GASTOS DE COBRANZA
+  const isPureCobranza =
+    (full.includes('honorarios') || full.includes('gastos de cobranza') || full.includes('gasto de cobranza') || full.includes('gastos de cobro')) &&
+    (full.includes('abogado') || full.includes('casa de cobro') || full.includes('prejuridic') || full.includes('juridic') || full.includes('cobranza') || full.includes('cobro'));
+
+  if (isPureCobranza && !full.includes('reversion') && !full.includes('devolucion') && !full.includes('debito automatico') && !full.includes('minimo vital')) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
+  }
+
+  // Helper to extract evidence around match
+  const extractEvidence = (keywords: string[]): string => {
+    let bestPos = -1;
+    let matchedKw = '';
+    for (const kw of keywords) {
+      const pos = lower.indexOf(kw);
+      if (pos !== -1 && (bestPos === -1 || pos > bestPos)) {
+        bestPos = pos;
+        matchedKw = kw;
+      }
+    }
+    if (bestPos !== -1) {
+      const start = Math.max(0, bestPos - 30);
+      const end = Math.min(text.length, bestPos + matchedKw.length + 60);
+      return text.slice(start, end).trim();
+    }
+    return text.slice(0, 120);
+  };
+
+  // Determine specific credit product
+  let prod = 'CRÉDITO / CARTERA';
+  if (full.includes('vivienda') || full.includes('hipotecari') || full.includes('frech') || full.includes('fresh') || full.includes('french')) {
+    prod = 'CRÉDITO DE VIVIENDA';
+  } else if (full.includes('leasing')) {
+    prod = 'LEASING';
+  } else if (full.includes('libre inversion') || full.includes('libre inversión')) {
+    prod = 'CRÉDITO DE LIBRE INVERSIÓN';
+  } else if (full.includes('rotativo')) {
+    prod = 'CRÉDITO ROTATIVO';
+  } else if (full.includes('vehiculo') || full.includes('automotriz') || full.includes('auto')) {
+    prod = 'CRÉDITO DE VEHÍCULO';
+  } else if (full.includes('consumo')) {
+    prod = 'CRÉDITO DE CONSUMO';
+  } else if (full.includes('libranza') || full.includes('nomina') || full.includes('descuento de nomina')) {
+    prod = 'LIBRANZA';
+  } else if (detectedProduct && detectedProduct !== 'NO ESPECIFICADO' && detectedProduct !== 'CUENTA DE AHORROS') {
+    prod = detectedProduct;
+  }
+
+  // 1. ENDOSO
+  const isEndoso =
+    /\bendoso(s)?\b/i.test(full) ||
+    full.includes('endoso') ||
+    full.includes('endosar');
+  if (isEndoso) {
+    const kws = ['endoso de seguro', 'endoso de poliza', 'endoso hipotecario', 'endoso externo', 'endoso de vida', 'endoso de incendio', 'solicitud de endoso', 'endoso'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'ENDOSO',
+      intencion: 'Solicitud o reclamación sobre el trámite de endoso de póliza asociada a la obligación crediticia',
+      problema: `Trámite de endoso de póliza no aplicado, demorado o rechazado en ${prod.toLowerCase()}`,
+      solicitud: 'Aplicación, actualización, aceptación o confirmación del endoso de la póliza',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'ENDOSO', prod, 'Solicita trámite, actualización o información sobre endoso de póliza.'),
+      evidencia,
+      producto_detectado: prod
+    };
+  }
+
+  // 2. FRECH
+  const isFrech =
+    /\b(frech|fresh|french|fresch)\b/i.test(full) ||
+    full.includes('subsidio frech') ||
+    full.includes('subsidio fresh') ||
+    full.includes('subsidio french') ||
+    full.includes('subsidio fresch') ||
+    full.includes('subsidio de vivienda') ||
+    full.includes('subsidio a la tasa de vivienda') ||
+    full.includes('subsidio a la tasa') ||
+    full.includes('subsidio de tasa') ||
+    full.includes('cobertura de tasa de interes de vivienda') ||
+    full.includes('cobertura de tasa de vivienda') ||
+    full.includes('cobertura de tasa') ||
+    full.includes('cobertura frech') ||
+    full.includes('beneficio de cobertura frech') ||
+    full.includes('beneficio frech') ||
+    full.includes('beneficio fresh');
+  if (isFrech) {
+    const kws = ['frech', 'fresh', 'french', 'fresch', 'subsidio de vivienda', 'subsidio a la tasa', 'cobertura de tasa', 'cobertura frech', 'beneficio frech'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'FRECH',
+      intencion: 'Solicitud de aplicación, revisión o aclaración del beneficio o subsidio FRECH de vivienda',
+      problema: 'Subsidio o cobertura de tasa FRECH no aplicado, suspendido o no reflejado en la cuota',
+      solicitud: 'Aplicación de la cobertura FRECH y ajuste o reliquidación de la cuota mensual',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'FRECH', 'CRÉDITO DE VIVIENDA', 'Reclama por no aplicación o suspensión del beneficio o subsidio FRECH de vivienda.'),
+      evidencia,
+      producto_detectado: 'CRÉDITO DE VIVIENDA'
+    };
+  }
+
+  // 3. CAMBIO DE FECHA
+  const isCambioFecha =
+    full.includes('cambiar la fecha de pago') ||
+    full.includes('cambiar fecha de pago') ||
+    full.includes('cambio de fecha de pago') ||
+    full.includes('cambio de fecha') ||
+    full.includes('modificar la fecha de mi cuota') ||
+    full.includes('modificar fecha de cuota') ||
+    full.includes('modificar la fecha de pago') ||
+    full.includes('modificar fecha de pago') ||
+    full.includes('cambiar el dia de pago') ||
+    full.includes('cambiar dia de pago') ||
+    full.includes('cambiar la fecha de vencimiento') ||
+    full.includes('cambiar fecha de vencimiento') ||
+    full.includes('mi cuota venza otro dia') ||
+    full.includes('vence otro dia') ||
+    full.includes('trasladar la fecha de pago') ||
+    full.includes('trasladar fecha de pago') ||
+    full.includes('ajustar el calendario de pagos') ||
+    full.includes('cambiar la fecha limite') ||
+    full.includes('cambiar la fecha de debito') ||
+    full.includes('despues de mi fecha de pago de nomina') ||
+    full.includes('se cobre despues de mi nomina') ||
+    full.includes('despues de mi nomina');
+  if (isCambioFecha) {
+    const kws = ['cambio de fecha de pago', 'cambiar la fecha de pago', 'cambiar fecha de pago', 'cambiar el dia de pago', 'cambiar fecha de vencimiento', 'trasladar la fecha de pago', 'fecha de pago'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'CAMBIO DE FECHA',
+      intencion: 'Solicitud de modificación de la fecha de pago o vencimiento de la cuota del crédito',
+      problema: `Necesidad de modificar o trasladar la fecha de pago o vencimiento de la cuota en ${prod.toLowerCase()}`,
+      solicitud: 'Modificación y traslado de la fecha mensual de pago del crédito',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'CAMBIO DE FECHA', prod, 'Solicita cambio o traslado en la fecha de pago o vencimiento de la cuota.'),
+      evidencia,
+      producto_detectado: prod
+    };
+  }
+
+  // 4. REAPLICACIONES
+  const isReaplicacion =
+    full.includes('reaplicar') ||
+    full.includes('reaplicacion') ||
+    full.includes('reaplicaciones') ||
+    full.includes('reaplicar el pago') ||
+    full.includes('reaplicar mi cuota') ||
+    full.includes('reaplicar el abono') ||
+    full.includes('reaplicar al capital') ||
+    full.includes('reaplicar a capital') ||
+    full.includes('abono a capital') ||
+    full.includes('pago a capital') ||
+    full.includes('se aplique al capital') ||
+    full.includes('se aplique a capital') ||
+    full.includes('que el pago se aplique al capital') ||
+    full.includes('cambiar la aplicacion del pago') ||
+    full.includes('modificar la aplicacion del pago') ||
+    full.includes('ajustar la aplicacion de mi pago') ||
+    full.includes('reaplicar el pago al plazo') ||
+    full.includes('reaplicar a plazo') ||
+    full.includes('reduccion de la cuota mensual mediante reaplicacion') ||
+    full.includes('reaplicar para reducir cuota') ||
+    full.includes('reaplicar para reducir la cuota') ||
+    full.includes('reduccion de la cuota mensual') ||
+    full.includes('reaplicar a cobertura de cuota') ||
+    full.includes('cobertura de cuota') ||
+    full.includes('aplicacion a cobertura de cuota') ||
+    full.includes('debe aplicarse a otra cuota') ||
+    full.includes('cuota equivocada') ||
+    full.includes('imputacion del pago') ||
+    full.includes('imputacion de pago') ||
+    full.includes('corregir la aplicacion de mi abono');
+  if (isReaplicacion) {
+    const kws = ['reaplicar', 'reaplicacion', 'reaplicaciones', 'abono a capital', 'pago a capital', 'reduccion de la cuota', 'cobertura de cuota', 'imputacion del pago'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'REAPLICACIONES',
+      intencion: 'Solicitud de reaplicación, redistribución o cambio en la imputación de pagos o abonos a capital o plazo',
+      problema: `Solicitud de reaplicación o cambio en la imputación de pagos en ${prod.toLowerCase()}`,
+      solicitud: 'Reaplicar el pago o abono realizado a capital, reducción de cuota o plazo pactado',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'REAPLICACIONES', prod, 'Solicita reaplicación o cambio en la imputación de su pago a capital o plazo.'),
+      evidencia,
+      producto_detectado: prod
+    };
+  }
+
+  // 5. HÁBITO DE PAGO
+  const isHabitoPago =
+    full.includes('habito de pago') ||
+    full.includes('por que mi pago no se aplica a capital') ||
+    full.includes('mi pago no se aplica a capital') ||
+    full.includes('todo mi pago se esta yendo a intereses') ||
+    full.includes('todo se va a intereses') ||
+    full.includes('la mayoria se va a intereses') ||
+    full.includes('todo se aplica a intereses') ||
+    full.includes('se aplica principalmente a intereses') ||
+    full.includes('no disminuye el saldo de mi deuda') ||
+    full.includes('el saldo de mi deuda no disminuye') ||
+    full.includes('la deuda no disminuye') ||
+    full.includes('mi obligacion no disminuye') ||
+    full.includes('mi saldo no disminuye') ||
+    full.includes('estoy pagando y debo lo mismo') ||
+    full.includes('pago y sigo debiendo lo mismo') ||
+    full.includes('pago mensualmente pero la deuda sigue igual') ||
+    full.includes('debo lo mismo') ||
+    full.includes('no veo que baje el capital') ||
+    full.includes('el capital no baja') ||
+    full.includes('no baja el capital') ||
+    full.includes('pago que no disminuye capital') ||
+    full.includes('no entiendo como se distribuyen mis pagos') ||
+    full.includes('los abonos no estan reduciendo el capital') ||
+    full.includes('no se refleja la reduccion de mi deuda') ||
+    full.includes('solicito explicacion de la distribucion de mis cuotas') ||
+    full.includes('distribucion de mis cuotas') ||
+    full.includes('estoy pagando intereses y el capital no disminuye') ||
+    full.includes('mi saldo no baja despues de pagar') ||
+    full.includes('comportamiento de mi obligacion no corresponde');
+  if (isHabitoPago) {
+    const kws = ['todo mi pago se esta yendo a intereses', 'todo se aplica a intereses', 'no disminuye el saldo', 'no disminuye capital', 'el capital no baja', 'estoy pagando y debo lo mismo', 'debo lo mismo', 'distribucion de mis cuotas', 'habito de pago'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'HÁBITO DE PAGO',
+      intencion: 'Inconformidad con la amortización, distribución de pagos a intereses vs capital y saldo que no disminuye',
+      problema: `Los pagos realizados en ${prod.toLowerCase()} se abonan predominantemente a intereses y no reducen el capital`,
+      solicitud: 'Explicación de la amortización, revisión del saldo de capital y comportamiento de la deuda',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'HÁBITO DE PAGO', prod, 'Reclama porque los pagos efectuados no disminuyen el capital o se aplican a intereses.'),
+      evidencia,
+      producto_detectado: prod
+    };
+  }
+
+  // 6. HISTÓRICO DE PAGO
+  const isHistoricoPago =
+    full.includes('historico de pagos') ||
+    full.includes('historico de pago') ||
+    full.includes('historial de pagos') ||
+    full.includes('historial de pago') ||
+    full.includes('registro historico de pagos') ||
+    full.includes('relacion de pagos realizados') ||
+    full.includes('relacion de mis pagos') ||
+    full.includes('relacion de abonos') ||
+    full.includes('conocer todos los pagos que he efectuado') ||
+    full.includes('todos los pagos que he realizado') ||
+    full.includes('detalle de los abonos de mi obligacion') ||
+    full.includes('no aparecen mis pagos anteriores') ||
+    full.includes('verificar los pagos realizados') ||
+    full.includes('certificado historico de pagos') ||
+    full.includes('reporte historico de pagos') ||
+    full.includes('certificado o reporte historico de pagos') ||
+    full.includes('fechas y valores de mis pagos anteriores') ||
+    full.includes('registro de los pagos desde que adquiri el credito') ||
+    full.includes('extracto de movimientos de mi credito') ||
+    full.includes('detalle de pagos aplicados a capital e intereses');
+  if (isHistoricoPago) {
+    const kws = ['historico de pagos', 'historial de pagos', 'relacion de pagos realizados', 'certificado historico de pagos', 'reporte historico de pagos', 'historico de pago'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'HISTÓRICO DE PAGO',
+      intencion: 'Solicitud de certificado, relación o reporte del histórico de pagos del crédito',
+      problema: `Solicitud de consulta o verificación del histórico de pagos en ${prod.toLowerCase()}`,
+      solicitud: 'Expedición y envío del reporte o certificado con el histórico y relación de pagos',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'HISTÓRICO DE PAGO', prod, 'Solicita histórico, relación o certificado de los pagos efectuados a su crédito.'),
+      evidencia,
+      producto_detectado: prod
+    };
+  }
+
+  // 7. TITULARES
+  const isTitulares =
+    full.includes('ese credito no es mio') ||
+    full.includes('este credito no es mio') ||
+    full.includes('credito que no es mio') ||
+    full.includes('no reconozco ser titular de ese credito') ||
+    full.includes('no reconozco ser titular') ||
+    full.includes('no soy titular de ese credito') ||
+    full.includes('aparezco como titular de un credito que no reconozco') ||
+    full.includes('aparezco como titular de un credito') ||
+    full.includes('aparezco registrado como titular de un credito') ||
+    full.includes('no aparezco como titular de mi obligacion') ||
+    full.includes('no aparezco como titular') ||
+    full.includes('no figura el segundo titular') ||
+    full.includes('falta el segundo titular') ||
+    full.includes('segundo titular del credito') ||
+    full.includes('segundo titular') ||
+    full.includes('no aparece el codeudor') ||
+    full.includes('falta el codeudor') ||
+    full.includes('codeudor') ||
+    full.includes('no me incluyeron como cotitular') ||
+    full.includes('cotitular') ||
+    full.includes('titularidad compartida') ||
+    full.includes('no se refleja la titularidad compartida') ||
+    full.includes('el credito aparece a nombre de otra persona') ||
+    full.includes('mi nombre no aparece en la obligacion') ||
+    full.includes('corregir los titulares del credito') ||
+    full.includes('actualizar la informacion de los titulares') ||
+    full.includes('correccion de la titularidad') ||
+    full.includes('no aparece mi pareja como segundo titular') ||
+    full.includes('mi conyuge como segundo titular') ||
+    full.includes('titulares del credito');
+  if (isTitulares) {
+    const kws = ['segundo titular', 'codeudor', 'cotitular', 'titularidad compartida', 'no es mio', 'no reconozco ser titular', 'titulares del credito', 'titular'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'TITULARES',
+      intencion: 'Reclamación o solicitud sobre titularidad, cotitulares, codeudores o desvinculación de titularidad de la obligación',
+      problema: `Inconsistencia en titulares registrados, falta de segundo titular/codeudor o inclusión errónea en ${prod.toLowerCase()}`,
+      solicitud: 'Actualización, corrección o desvinculación de los titulares del crédito',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'TITULARES', prod, 'Reclama por inconsistencia en titulares, codeudores o titularidad del crédito.'),
+      evidencia,
+      producto_detectado: prod
+    };
+  }
+
+  // 8. REVERSIÓN
+  const isReversion =
+    (full.includes('solicito reversion') ||
+     full.includes('solicito devolucion') ||
+     full.includes('necesito que me devuelvan') ||
+     full.includes('solicito reintegro') ||
+     full.includes('que reintegren') ||
+     full.includes('reversar') ||
+     full.includes('reversion del pago') ||
+     full.includes('reversion de pago') ||
+     full.includes('devolucion del pago') ||
+     full.includes('devolucion de pago') ||
+     full.includes('reversion de debito automatico') ||
+     full.includes('devolucion de debito automatico') ||
+     full.includes('reversar debito automatico') ||
+     full.includes('reversion inmediata del debito automatico') ||
+     full.includes('me debitaron automaticamente y solicito devolucion') ||
+     full.includes('debitaron automaticamente dos veces') ||
+     full.includes('pago doble') ||
+     full.includes('pago duplicado') ||
+     full.includes('cobro doble') ||
+     full.includes('cobro duplicado') ||
+     full.includes('cuota dos veces') ||
+     full.includes('descuento que afecta mi minimo vital') ||
+     full.includes('minimo vital') ||
+     full.includes('afecta mi minimo vital') ||
+     full.includes('vulnera mi minimo vital') ||
+     full.includes('descontaron dinero de mi nomina') ||
+     full.includes('descuento de mi nomina') ||
+     full.includes('devolver un debito') ||
+     full.includes('reversion por un pago aplicado indebidamente')) &&
+    !full.includes('cuota de manejo') &&
+    !full.includes('cuotas de manejo');
+
+  if (isReversion) {
+    const kws = ['reversion de debito automatico', 'debito automatico', 'pago doble', 'pago duplicado', 'minimo vital', 'devolucion', 'reversion', 'reintegro'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'REVERSIÓN',
+      intencion: 'Solicitud de reversión, reintegro o devolución de dinero debitado, cobrado o descontado',
+      problema: `Débito automático, cobro duplicado o descuento cuestionado en ${prod.toLowerCase()}`,
+      solicitud: 'Reversión inmediata y reintegro del dinero debitado o descontado',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'REVERSIÓN', prod, 'Solicita reversión y devolución del débito automático, pago duplicado o descuento.'),
+      evidencia,
+      producto_detectado: prod
+    };
+  }
+
+  // 9. AUMENTO DE CUOTA (Highest priority when client complains they now pay more than before)
+  const isAumentoCuota =
+    full.includes('aumento la cuota') ||
+    full.includes('aumentaron la cuota') ||
+    full.includes('aumento de la cuota') ||
+    full.includes('aumento mi cuota') ||
+    full.includes('aumentaron mi cuota') ||
+    full.includes('aumento de cuota') ||
+    full.includes('incremento de cuota') ||
+    full.includes('incremento en la cuota') ||
+    full.includes('incrementaron la cuota') ||
+    full.includes('subio la cuota') ||
+    full.includes('subieron la cuota') ||
+    full.includes('subio mi cuota') ||
+    full.includes('subieron mi cuota') ||
+    full.includes('cuota mensual subio') ||
+    full.includes('por que estoy pagando mas') ||
+    full.includes('estoy pagando mas que antes') ||
+    full.includes('estoy pagando mas') ||
+    full.includes('antes pagaba menos') ||
+    full.includes('ahora pago mas') ||
+    full.includes('ahora me cobran mas') ||
+    full.includes('la cuota no corresponde a lo que pagaba anteriormente') ||
+    full.includes('no corresponde a lo que pagaba') ||
+    full.includes('no estoy de acuerdo con el incremento de mi cuota') ||
+    full.includes('no estoy de acuerdo con el incremento') ||
+    full.includes('no estoy de acuerdo con el aumento de mi cuota') ||
+    full.includes('cuota mas alta') ||
+    (full.includes('migracion') && (full.includes('cuota') || full.includes('pagaba'))) ||
+    full.includes('eso no era lo que pagaba en itau') ||
+    full.includes('en itau pagaba un valor diferente') ||
+    full.includes('mi cuota era de un valor y ahora me cobran otro') ||
+    full.includes('no me informaron que iba a aumentar la cuota') ||
+    full.includes('me cambiaron el valor mensual de la obligacion') ||
+    full.includes('cambiaron el valor de la cuota') ||
+    full.includes('cuota de vivienda aumento') ||
+    full.includes('el valor de mi cuota subio') ||
+    full.includes('el valor de la cuota subio') ||
+    full.includes('solicito revisar el incremento de mi cuota') ||
+    full.includes('solicito revisar el aumento de mi cuota') ||
+    full.includes('no reconozco el nuevo valor de mi cuota');
+
+  if (isAumentoCuota) {
+    const kws = ['aumentaron la cuota', 'aumento la cuota', 'aumento de cuota', 'incremento de cuota', 'subio la cuota', 'estoy pagando mas', 'antes pagaba menos', 'mas alta despues de la migracion', 'cuota'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'AUMENTO DE CUOTA',
+      intencion: 'Inconformidad o reclamación por incremento o aumento no informado en el valor de la cuota del crédito',
+      problema: `Aumento o incremento no reconocido en el valor de la cuota mensual en ${prod.toLowerCase()}`,
+      solicitud: 'Explicación del incremento, revisión y ajuste del valor de la cuota al pactado',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'AUMENTO DE CUOTA', prod, 'Reclama por incremento o aumento no reconocido en el valor de la cuota de su crédito.'),
+      evidencia,
+      producto_detectado: prod
+    };
+  }
+
+  // 10. PLAN DE PAGOS
+  const isPlanPagos =
+    full.includes('plan de pagos') ||
+    full.includes('plan de pago') ||
+    full.includes('planes de pago') ||
+    full.includes('planes de pagos') ||
+    full.includes('amortizacion') ||
+    full.includes('tabla de amortizacion') ||
+    full.includes('cuadro de amortizacion') ||
+    full.includes('cronograma de pagos') ||
+    full.includes('cronograma de pago') ||
+    full.includes('inconsistencias en el plan') ||
+    full.includes('inconsistencia en el plan') ||
+    full.includes('inconsistencias en la amortizacion') ||
+    full.includes('inconsistencia en la amortizacion') ||
+    full.includes('no entiendo como liquidaron mi credito') ||
+    full.includes('explicacion de las cuotas del credito') ||
+    full.includes('valores incorrectos en el plan') ||
+    full.includes('valores incorrectos') ||
+    full.includes('corregir mi plan de pagos') ||
+    full.includes('distribucion de las cuotas en el plan') ||
+    full.includes('copia del plan de pagos') ||
+    full.includes('actualizacion del plan de pagos');
+
+  if (isPlanPagos) {
+    const kws = ['plan de pagos', 'plan de pago', 'amortizacion', 'tabla de amortizacion', 'cronograma de pagos', 'valores incorrectos'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'PLAN DE PAGOS',
+      intencion: 'Inconformidad o solicitud de entrega/corrección del plan de amortización o pagos del crédito',
+      problema: `Inconsistencia, diferencias o solicitud del plan de pagos y amortización en ${prod.toLowerCase()}`,
+      solicitud: 'Entrega, revisión o corrección del plan de amortización y cronograma de pagos',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'PLAN DE PAGOS', prod, 'Reclama inconsistencias o solicita entrega/corrección de su plan de pagos y amortización.'),
+      evidencia,
+      producto_detectado: prod
+    };
+  }
+
+  // Secondary: Acuerdos de pago y reestructuración
+  const isAcuerdoDePago =
+    full.includes('acuerdo de pago') ||
+    full.includes('acuerdos de pago') ||
+    full.includes('llegar a un acuerdo') ||
+    full.includes('propuesta de acuerdo') ||
+    (full.includes('acuerdo') && !full.includes('de acuerdo')) ||
+    full.includes('refinanc') ||
+    full.includes('reestructur') ||
+    full.includes('alivio');
+
+  if (isAcuerdoDePago) {
+    const kws = ['acuerdo de pago', 'refinanciacion', 'reestructuracion', 'alivio'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'REFINANCIACIÓN Y ACUERDOS',
+      intencion: 'Solicitud de acuerdo de pago, refinanciación o alivio financiero',
+      problema: `Solicitud de acuerdo o reestructuración de obligación crediticia en ${prod.toLowerCase()}`,
+      solicitud: 'Gestión de acuerdo de pago o refinanciación de cartera',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'REFINANCIACIÓN Y ACUERDOS', prod, 'Solicita acuerdo de pago o reestructuración de su crédito.'),
+      evidencia,
+      producto_detectado: prod
+    };
+  }
+
+  // General credit installment or obligation inquiry
+  const hasGenericCreditTerm =
     full.includes('credito de vivienda') ||
     full.includes('credito hipotecario') ||
     full.includes('hipotecario') ||
@@ -1239,123 +1817,50 @@ export function detectCreditoCarteraCuotas(
     full.includes('credito de leasing') ||
     full.includes('leasing') ||
     full.includes('libranza') ||
-    full.includes('credito de libranza') ||
     full.includes('prestamo') ||
-    full.includes('mi prestamo') ||
-    full.includes('credito de consumo') ||
     full.includes('libre inversion') ||
     full.includes('microcredito') ||
     full.includes('cartera') ||
     full.includes('obligacion crediticia') ||
-    full.includes('migracion bancaria') ||
     (full.includes('credito') && !full.includes('tarjeta de credito') && !full.includes('tarjeta credito')) ||
     detectedProduct === 'CRÉDITO / CARTERA';
 
-  const hasInstallmentTerm =
+  const hasGenericInstallment =
     full.includes('cuota') ||
     full.includes('cuotas') ||
-    full.includes('plan de pagos') ||
-    full.includes('plan de pago') ||
-    full.includes('amortizacion') ||
-    full.includes('tabla de amortizacion') ||
-    full.includes('inconsistencia en la amortizacion') ||
-    full.includes('valor de la cuota') ||
-    full.includes('aumento de la cuota') ||
-    full.includes('aumentaron la cuota') ||
-    full.includes('aumento de cuota') ||
-    full.includes('aumento mi cuota') ||
-    full.includes('incremento de cuota') ||
-    full.includes('subio la cuota') ||
-    full.includes('subieron la cuota') ||
-    full.includes('disminucion de la cuota') ||
-    full.includes('baja de la cuota') ||
-    full.includes('cuota mensual') ||
-    full.includes('pago de cuotas') ||
     full.includes('cuotas pendientes') ||
     full.includes('cuotas vencidas') ||
     full.includes('cuotas de financiacion') ||
-    full.includes('condiciones financieras') ||
-    full.includes('tasa de interes') ||
     full.includes('revisar las cuotas') ||
-    full.includes('revisar cuotas') ||
-    full.includes('valores incorrectos');
+    full.includes('revisar cuotas');
 
-  const isMatch = hasCreditTerm && hasInstallmentTerm;
-
-  if (!isMatch) {
-    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '' };
+  if (hasGenericCreditTerm && hasGenericInstallment) {
+    const kws = ['cuota del credito', 'cuota mensual', 'cuotas', 'cuota', 'credito'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'PLAN DE PAGOS',
+      intencion: 'Solicitud de revisión, aclaración o consulta sobre cuotas de la obligación crediticia',
+      problema: `Revisión o consulta sobre cuotas del crédito en ${prod.toLowerCase()}`,
+      solicitud: 'Revisión y explicación del valor de las cuotas o estado del crédito',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'PLAN DE PAGOS', prod, 'Consulta o solicita revisión de cuotas de su crédito.'),
+      evidencia,
+      producto_detectado: prod
+    };
   }
 
-  let sub = 'VALOR DE LA CUOTA Y PLAN DE PAGOS';
-  let intencion = 'Inconformidad o consulta sobre el valor de la cuota o plan de pagos del crédito';
-  let problema = 'Inconformidad con el valor de la cuota o plan de amortización del crédito';
-  let solicitud = 'Revisión y ajuste del valor de la cuota o plan de pagos';
-  let resumen = 'Reclama por valor de la cuota o inconsistencias en plan de pagos de su crédito.';
+  return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
+}
 
-  const isAcuerdoDePago =
-    full.includes('acuerdo de pago') ||
-    full.includes('acuerdos de pago') ||
-    full.includes('llegar a un acuerdo') ||
-    full.includes('propuesta de acuerdo') ||
-    (full.includes('acuerdo') && !full.includes('de acuerdo'));
-
-  if (full.includes('refinanc') || isAcuerdoDePago || full.includes('alivio') || full.includes('reestructur')) {
-    sub = 'REFINANCIACIÓN Y ACUERDOS';
-    intencion = 'Solicitud de acuerdo de pago, refinanciación o alivio financiero';
-    problema = 'Solicitud de acuerdo o reestructuración de obligación crediticia';
-    solicitud = 'Gestión de acuerdo de pago o refinanciación de cartera';
-    resumen = 'Solicita acuerdo de pago o reestructuración de su crédito.';
-  } else if (full.includes('aument') || full.includes('increment') || full.includes('subio') || full.includes('subieron')) {
-    sub = 'VALOR DE LA CUOTA Y PLAN DE PAGOS';
-    intencion = 'Inconformidad por aumento en el valor de la cuota del crédito';
-    problema = 'Aumento en el valor de la cuota mensual del crédito';
-    solicitud = 'Explicación del incremento y ajuste del valor de la cuota al pactado';
-    resumen = 'Reclama por aumento en el valor de la cuota de su crédito.';
-  } else if (full.includes('plan de pago') || full.includes('amortiz') || full.includes('inconsist') || full.includes('incorrect') || full.includes('diferenc')) {
-    sub = 'VALOR DE LA CUOTA Y PLAN DE PAGOS';
-    intencion = 'Inconsistencia en el plan de pagos o amortización del crédito';
-    problema = 'Diferencias o valores incorrectos en el plan de pagos del crédito';
-    solicitud = 'Corrección y aclaración del plan de amortización y pagos del crédito';
-    resumen = 'Solicita corrección de valores en el plan de pagos de su crédito.';
-  } else if (
-    full.includes('revisar las cuotas') ||
-    full.includes('revisar cuotas') ||
-    full.includes('explicacion sobre el valor') ||
-    full.includes('no entiendo la cuota') ||
-    full.includes('no estoy de acuerdo') ||
-    full.includes('desacuerdo') ||
-    full.includes('cuota mensual') ||
-    full.includes('valor de la cuota') ||
-    full.includes('cuota de mi prestamo') ||
-    full.includes('cuota de mi credito') ||
-    full.includes('cuota del prestamo') ||
-    full.includes('cuota del credito') ||
-    full.includes('cuota') ||
-    full.includes('cuotas')
-  ) {
-    sub = 'VALOR DE LA CUOTA Y PLAN DE PAGOS';
-    intencion = 'Solicitud de revisión, aclaración o desacuerdo con el valor de la cuota del crédito';
-    problema = 'Desacuerdo o duda sobre el valor de la cuota del crédito';
-    solicitud = 'Revisión y explicación del valor de la cuota liquidada';
-    resumen = 'Inconformidad o solicitud de revisión sobre el valor de la cuota de su crédito.';
-  } else {
-    sub = 'ESTADO DE OBLIGACIÓN / SALDOS';
-    intencion = 'Consulta de cuotas o estado de la obligación crediticia';
-    problema = 'Consulta o revisión de cuotas de la obligación';
-    solicitud = 'Información sobre estado de cuotas y saldo del crédito';
-    resumen = 'Consulta sobre cuotas y estado de obligación de su crédito.';
-  }
-
-  const prodDesc = full.includes('vivienda') ? ' en crédito de vivienda' : full.includes('leasing') ? ' en leasing' : full.includes('libranza') ? ' en libranza' : full.includes('prestamo') ? ' en préstamo' : ' en crédito';
-
-  return {
-    matches: true,
-    subcategoria: sub,
-    intencion,
-    problema: `${problema}${prodDesc}`,
-    solicitud,
-    resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', sub, 'CRÉDITO / CARTERA', resumen)
-  };
+/**
+ * Backwards compatibility alias for detectCreditoCartera
+ */
+export function detectCreditoCarteraCuotas(
+  text: string,
+  submotivo: string,
+  detectedProduct: string
+) {
+  return detectCreditoCartera(text, submotivo, detectedProduct);
 }
 
 /**
@@ -1909,9 +2414,21 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   const isCondicionesDispute = condicionesRes.matches;
   const isCuotaManejoDispute = cuotaRes.matches;
   const isCobranzaDispute = cobranzaRes.matches;
+  const isCreditoDispute = creditoRes.matches && (
+    creditoRes.subcategoria === 'REVERSIÓN' ||
+    creditoRes.subcategoria === 'TITULARES' ||
+    creditoRes.subcategoria === 'AUMENTO DE CUOTA' ||
+    creditoRes.subcategoria === 'ENDOSO' ||
+    creditoRes.subcategoria === 'FRECH' ||
+    creditoRes.subcategoria === 'REAPLICACIONES' ||
+    creditoRes.subcategoria === 'HÁBITO DE PAGO' ||
+    creditoRes.subcategoria === 'HISTÓRICO DE PAGO' ||
+    creditoRes.subcategoria === 'CAMBIO DE FECHA' ||
+    creditoRes.subcategoria === 'PLAN DE PAGOS'
+  );
 
   const isFraudManifestation =
-    !isInsuranceDispute && !isCondicionesDispute && !isCuotaManejoDispute && !isCobranzaDispute && (
+    !isInsuranceDispute && !isCondicionesDispute && !isCuotaManejoDispute && !isCobranzaDispute && !isCreditoDispute && (
       lower.includes('no reconozco') ||
       lower.includes('no reconoce') ||
       lower.includes('no reconocid') ||
@@ -2261,7 +2778,71 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   // Detección profunda y contextual con desambiguación y soporte concurrente
   // =========================================================================
 
-  // 6.0 Concurrencia entre Condiciones y Cuotas de Manejo
+  // 6.0 Concurrencia entre Cuotas de Crédito / Cartera y Cuotas de Manejo (ej. Caso 8)
+  if (creditoRes.matches && cuotaRes.matches) {
+    const creditoKeywords = ['credito', 'prestamo', 'vivienda', 'leasing', 'libranza', 'plan de pagos', 'amortizacion', 'cuota del credito', 'cuota de credito', 'aumento la cuota', 'aumento de cuota', 'cuota'];
+    const cuotaKeywords = ['cuota de manejo', 'cuotas de manejo', 'cuota manejo', 'administracion de la tarjeta', 'administracion de mi tarjeta'];
+
+    let firstCreditoPos = 999999;
+    for (const kw of creditoKeywords) {
+      const idx = fullLower.indexOf(kw);
+      if (idx !== -1 && idx < firstCreditoPos) firstCreditoPos = idx;
+    }
+    let firstCuotaPos = 999999;
+    for (const kw of cuotaKeywords) {
+      const idx = fullLower.indexOf(kw);
+      if (idx !== -1 && idx < firstCuotaPos) firstCuotaPos = idx;
+    }
+
+    if (firstCreditoPos <= firstCuotaPos) {
+      return {
+        expediente,
+        categoria_principal: 'CRÉDITOS / CARTERA',
+        subcategoria: creditoRes.subcategoria,
+        resumen_requerimiento: `${creditoRes.resumen} Adicionalmente reclama por cuota de manejo.`,
+        intencion_cliente: `${creditoRes.intencion}. Incluye reclamo concurrente sobre cuota de manejo.`,
+        confianza: 98,
+        requiere_revision_humana: false,
+        producto_detectado: creditoRes.producto_detectado || 'CRÉDITO / CARTERA',
+        problema_principal: `${creditoRes.problema} y cobro de cuota de manejo`,
+        solicitud_cliente: `${creditoRes.solicitud} y revisión de cuota de manejo facturada`,
+        evidencia_textual: creditoRes.evidencia || rawText.slice(0, 100)
+      };
+    } else {
+      return {
+        expediente,
+        categoria_principal: 'CUOTAS DE MANEJO',
+        subcategoria: cuotaRes.subcategoria,
+        resumen_requerimiento: `${cuotaRes.resumen} Adicionalmente reclama por cuota de crédito.`,
+        intencion_cliente: `${cuotaRes.intencion}. Incluye reclamo concurrente sobre cuota de crédito.`,
+        confianza: 98,
+        requiere_revision_humana: false,
+        producto_detectado: detectedProduct !== 'NO ESPECIFICADO' ? detectedProduct : 'TARJETA DE CRÉDITO',
+        problema_principal: `${cuotaRes.problema} y cuota de crédito`,
+        solicitud_cliente: `${cuotaRes.solicitud} y revisión de cuota de crédito`,
+        evidencia_textual: rawText.slice(0, 100)
+      };
+    }
+  }
+
+  // 6.1 CRÉDITOS / CARTERA (Plan de pagos, FRECH, Aumento de cuota, Endoso, Reversión, Reaplicaciones, Hábito de pago, Histórico de pago, Titulares, Cambio de fecha)
+  if (creditoRes.matches) {
+    return {
+      expediente,
+      categoria_principal: 'CRÉDITOS / CARTERA',
+      subcategoria: creditoRes.subcategoria,
+      resumen_requerimiento: creditoRes.resumen,
+      intencion_cliente: creditoRes.intencion,
+      confianza: 98,
+      requiere_revision_humana: false,
+      producto_detectado: creditoRes.producto_detectado || (detectedProduct !== 'NO ESPECIFICADO' ? detectedProduct : 'CRÉDITO / CARTERA'),
+      problema_principal: creditoRes.problema,
+      solicitud_cliente: creditoRes.solicitud,
+      evidencia_textual: creditoRes.evidencia || rawText.slice(0, 100)
+    };
+  }
+
+  // 6.2 Concurrencia entre Condiciones y Cuotas de Manejo
   if (condicionesRes.matches && cuotaRes.matches) {
     const condicionKeywords = ['tasa', 'condicion', 'plazo', 'pactad', 'migrac'];
     const cuotaKeywords = ['cuota de manejo', 'cuotas de manejo', 'cuota manejo', 'administracion de la tarjeta'];
@@ -2308,7 +2889,7 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     }
   }
 
-  // 6.01 CONDICIONES (CARTERA / CRÉDITOS)
+  // 6.3 CONDICIONES (CARTERA / CRÉDITOS)
   if (condicionesRes.matches) {
     return {
       expediente,
@@ -2322,70 +2903,6 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
       problema_principal: condicionesRes.problema,
       solicitud_cliente: condicionesRes.solicitud,
       evidencia_textual: condicionesRes.evidencia
-    };
-  }
-
-  // 6.1 Concurrencia entre Cuotas de Crédito y Cuotas de Manejo (ej. Caso 8)
-  if (creditoRes.matches && cuotaRes.matches) {
-    const creditoKeywords = ['credito', 'prestamo', 'vivienda', 'leasing', 'libranza', 'plan de pagos', 'amortizacion', 'cuota del credito', 'cuota de credito'];
-    const cuotaKeywords = ['cuota de manejo', 'cuotas de manejo', 'cuota manejo', 'administracion de la tarjeta', 'administracion de mi tarjeta'];
-
-    let firstCreditoPos = 999999;
-    for (const kw of creditoKeywords) {
-      const idx = fullLower.indexOf(kw);
-      if (idx !== -1 && idx < firstCreditoPos) firstCreditoPos = idx;
-    }
-    let firstCuotaPos = 999999;
-    for (const kw of cuotaKeywords) {
-      const idx = fullLower.indexOf(kw);
-      if (idx !== -1 && idx < firstCuotaPos) firstCuotaPos = idx;
-    }
-
-    if (firstCreditoPos <= firstCuotaPos) {
-      return {
-        expediente,
-        categoria_principal: 'CRÉDITOS / CARTERA',
-        subcategoria: creditoRes.subcategoria,
-        resumen_requerimiento: `${creditoRes.resumen} Adicionalmente reclama por cuota de manejo.`,
-        intencion_cliente: `${creditoRes.intencion}. Incluye reclamo concurrente sobre cuota de manejo.`,
-        confianza: 98,
-        requiere_revision_humana: false,
-        producto_detectado: 'CRÉDITO / CARTERA',
-        problema_principal: `${creditoRes.problema} y cobro de cuota de manejo`,
-        solicitud_cliente: `${creditoRes.solicitud} y revisión de cuota de manejo facturada`,
-        evidencia_textual: rawText.slice(0, 100)
-      };
-    } else {
-      return {
-        expediente,
-        categoria_principal: 'CUOTAS DE MANEJO',
-        subcategoria: cuotaRes.subcategoria,
-        resumen_requerimiento: `${cuotaRes.resumen} Adicionalmente reclama por cuota de crédito.`,
-        intencion_cliente: `${cuotaRes.intencion}. Incluye reclamo concurrente sobre cuota de crédito.`,
-        confianza: 98,
-        requiere_revision_humana: false,
-        producto_detectado: detectedProduct !== 'NO ESPECIFICADO' ? detectedProduct : 'TARJETA DE CRÉDITO',
-        problema_principal: `${cuotaRes.problema} y cuota de crédito`,
-        solicitud_cliente: `${cuotaRes.solicitud} y revisión de cuota de crédito`,
-        evidencia_textual: rawText.slice(0, 100)
-      };
-    }
-  }
-
-  // 6.2 Cuotas de Crédito / Préstamos / Vivienda / Leasing / Plan de Pagos
-  if (creditoRes.matches) {
-    return {
-      expediente,
-      categoria_principal: 'CRÉDITOS / CARTERA',
-      subcategoria: creditoRes.subcategoria,
-      resumen_requerimiento: creditoRes.resumen,
-      intencion_cliente: creditoRes.intencion,
-      confianza: 98,
-      requiere_revision_humana: false,
-      producto_detectado: detectedProduct !== 'NO ESPECIFICADO' ? detectedProduct : 'CRÉDITO / CARTERA',
-      problema_principal: creditoRes.problema,
-      solicitud_cliente: creditoRes.solicitud,
-      evidencia_textual: rawText.slice(0, 100)
     };
   }
 

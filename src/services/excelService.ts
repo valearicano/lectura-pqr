@@ -83,17 +83,19 @@ export function exportEnrichedExcel(
     const nivelConfianza = a?.nivel_confianza || (conf >= 85 ? 'Alta' : conf >= 70 ? 'Media' : 'Baja');
     const reqRev = a?.requiere_revision_humana === 'SI' || a?.requiere_revision || catPrincipal === 'REVISIÓN HUMANA' ? 'SI' : 'NO';
 
+    // 2. Append required classification columns (no automated payment/date extraction columns)
+    row['CATEGORÍA PRINCIPAL'] = catPrincipal;
+    row['SUBCATEGORÍA IA'] = a?.subcategoria_ia || subcat;
+    row['PRODUCTO DETECTADO'] = a?.producto_detectado || a?.producto || 'NO ESPECIFICADO';
+    row['PROBLEMA PRINCIPAL'] = a?.problema_principal || '';
+    row['SOLICITUD DEL CLIENTE'] = a?.solicitud_cliente || '';
+    row['RESUMEN NORMALIZADO'] = a?.resumen_normalizado || resumenReq;
+    row['EVIDENCIA DE CLASIFICACIÓN'] = a?.evidencia_clasificacion || a?.evidencia_textual || '';
+    row['NIVEL DE CONFIANZA'] = nivelConfianza;
+    row['REQUIERE REVISIÓN'] = reqRev;
+
+    // Additional standard fields for auditability & backwards compatibility
     row['CATEGORIA'] = catPrincipal;
-    row['FECHA DEL PAGO'] = a?.fecha_pago || '';
-    row['VALOR DEL PAGO'] = a?.valor_pago || '';
-
-    // If multiple payments are mentioned in the same case, preserve them in linked columns
-    if (a?.pagos_detectados && a.pagos_detectados.length > 1) {
-      row['FECHA DEL PAGO 2'] = a.pagos_detectados[1]?.fecha || '';
-      row['VALOR DEL PAGO 2'] = a.pagos_detectados[1]?.valor || '';
-    }
-
-    row['ID_SOLICITUD_ORIGINAL'] = r.numero_expediente;
     row['CATEGORIA_PRINCIPAL'] = catPrincipal;
     row['SUBCATEGORIA'] = subcat;
     row['CATEGORIA_IA'] = a?.categoria_ia || catPrincipal;
@@ -103,8 +105,6 @@ export function exportEnrichedExcel(
     row['SOLICITUD_CLIENTE'] = a?.solicitud_cliente || '';
     row['RESUMEN_NORMALIZADO'] = a?.resumen_normalizado || resumenReq;
     row['EVIDENCIA_CLASIFICACION'] = a?.evidencia_clasificacion || a?.evidencia_textual || '';
-    row['RESUMEN_REQUERIMIENTO'] = resumenReq;
-    row['NIVEL_DE_CONFIANZA'] = nivelConfianza;
     row['NIVEL_CONFIANZA'] = nivelConfianza;
     row['REQUIERE_REVISION'] = reqRev;
     row['POSIBLE_INCONSISTENCIA'] = a?.posible_inconsistencia || a?.existe_inconsistencia === 'SI' ? 'SI' : 'NO';

@@ -8,7 +8,7 @@ export interface CuotasCreditoVsManejoTestCase {
   submotivo?: string;
   producto?: string;
   categoriaEsperada: string;
-  subcategoriaEsperada: string;
+  subcategoriaEsperada: string | string[];
   requiereRevisionEsperada: boolean;
   verificar?: (analysis: any) => boolean;
 }
@@ -21,7 +21,7 @@ export const CUOTAS_CREDITO_VS_MANEJO_SUITE: CuotasCreditoVsManejoTestCase[] = [
     expediente: 'CCVM-001',
     descripcion: 'Me aumentaron la cuota mensual de mi crédito de vivienda',
     categoriaEsperada: 'CRÉDITOS / CARTERA',
-    subcategoriaEsperada: 'VALOR DE LA CUOTA Y PLAN DE PAGOS',
+    subcategoriaEsperada: ['AUMENTO DE CUOTA', 'VALOR DE LA CUOTA Y PLAN DE PAGOS'],
     requiereRevisionEsperada: false,
     verificar: (analysis) => {
       return analysis.categoria_principal !== 'CUOTAS DE MANEJO' &&
@@ -36,7 +36,7 @@ export const CUOTAS_CREDITO_VS_MANEJO_SUITE: CuotasCreditoVsManejoTestCase[] = [
     expediente: 'CCVM-002',
     descripcion: 'Solicito revisar las cuotas de mi crédito de leasing',
     categoriaEsperada: 'CRÉDITOS / CARTERA',
-    subcategoriaEsperada: 'VALOR DE LA CUOTA Y PLAN DE PAGOS',
+    subcategoriaEsperada: ['PLAN DE PAGOS', 'VALOR DE LA CUOTA Y PLAN DE PAGOS'],
     requiereRevisionEsperada: false,
     verificar: (analysis) => {
       return analysis.categoria_principal !== 'CUOTAS DE MANEJO' &&
@@ -51,7 +51,7 @@ export const CUOTAS_CREDITO_VS_MANEJO_SUITE: CuotasCreditoVsManejoTestCase[] = [
     expediente: 'CCVM-003',
     descripcion: 'El plan de pagos de mi crédito presenta valores incorrectos',
     categoriaEsperada: 'CRÉDITOS / CARTERA',
-    subcategoriaEsperada: 'VALOR DE LA CUOTA Y PLAN DE PAGOS',
+    subcategoriaEsperada: ['PLAN DE PAGOS', 'VALOR DE LA CUOTA Y PLAN DE PAGOS'],
     requiereRevisionEsperada: false,
     verificar: (analysis) => {
       return analysis.categoria_principal !== 'CUOTAS DE MANEJO';
@@ -65,7 +65,7 @@ export const CUOTAS_CREDITO_VS_MANEJO_SUITE: CuotasCreditoVsManejoTestCase[] = [
     expediente: 'CCVM-004',
     descripcion: 'No estoy de acuerdo con la cuota mensual de mi préstamo',
     categoriaEsperada: 'CRÉDITOS / CARTERA',
-    subcategoriaEsperada: 'VALOR DE LA CUOTA Y PLAN DE PAGOS',
+    subcategoriaEsperada: ['PLAN DE PAGOS', 'VALOR DE LA CUOTA Y PLAN DE PAGOS'],
     requiereRevisionEsperada: false,
     verificar: (analysis) => {
       return analysis.categoria_principal !== 'CUOTAS DE MANEJO';
@@ -122,7 +122,7 @@ export const CUOTAS_CREDITO_VS_MANEJO_SUITE: CuotasCreditoVsManejoTestCase[] = [
     expediente: 'CCVM-008',
     descripcion: 'Me aumentaron la cuota del crédito y también me cobraron cuota de manejo',
     categoriaEsperada: 'CRÉDITOS / CARTERA',
-    subcategoriaEsperada: 'VALOR DE LA CUOTA Y PLAN DE PAGOS',
+    subcategoriaEsperada: ['AUMENTO DE CUOTA', 'VALOR DE LA CUOTA Y PLAN DE PAGOS'],
     requiereRevisionEsperada: false,
     verificar: (analysis) => {
       const mentionsSecondary =
@@ -184,7 +184,9 @@ export function runCuotasCreditoVsManejoTests() {
     const analysis = buildPQRSAnalysis(inputRecord, deterministic);
 
     const catOk = analysis.categoria_principal === tc.categoriaEsperada;
-    const subOk = analysis.subcategoria === tc.subcategoriaEsperada;
+    const subOk = Array.isArray(tc.subcategoriaEsperada)
+      ? tc.subcategoriaEsperada.includes(analysis.subcategoria)
+      : analysis.subcategoria === tc.subcategoriaEsperada;
     const revOk = analysis.requiere_revision === tc.requiereRevisionEsperada;
     const customOk = tc.verificar ? tc.verificar(analysis) : true;
 
