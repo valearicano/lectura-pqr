@@ -465,19 +465,38 @@ export function normalizeCategoryName(raw: string): { categoria_principal: strin
 
   // 3. CDT (Only if explicitly mentions CDT)
   if (/\bCDT\b/.test(clean) || clean.includes('DEPOSITO A TERMINO') || clean.includes('DECEVAL')) {
-    if (clean.includes('VISUALIZ') || clean.includes('APP') || clean.includes('DESAPARECI')) {
-      return { categoria_principal: 'CDT', subcategoria: 'CDT - VISUALIZACIÓN' };
+    if (clean.includes('TRIBUTARI') || clean.includes('RENTA') || clean.includes('FISCAL') || clean.includes('RETEFUENTE')) {
+      return { categoria_principal: 'CDT', subcategoria: 'CERTIFICADOS TRIBUTARIOS' };
     }
-    if (clean.includes('RENDIMIENTO') || clean.includes('INTERES')) {
-      return { categoria_principal: 'CDT', subcategoria: 'CDT - RENDIMIENTOS' };
+    if (
+      clean.includes('CERTIFICADO DE SALDO') ||
+      clean.includes('DECEVAL') ||
+      clean.includes('SALDO O DECEVAL') ||
+      clean.includes('CERTIFICADOS Y SOPORTES') ||
+      clean.includes('TITULARIDAD') ||
+      clean.includes('VALORES INICIALES')
+    ) {
+      return { categoria_principal: 'CDT', subcategoria: 'CERTIFICADO DE SALDO O DECEVAL' };
     }
-    if (clean.includes('PAGO') || clean.includes('CANCEL') || clean.includes('REDENCION') || clean.includes('VENCIMIENTO')) {
-      return { categoria_principal: 'CDT', subcategoria: 'CDT - PAGO / CANCELACIÓN' };
+    if (clean.includes('RENOVAC') || clean.includes('PRORROG')) {
+      return { categoria_principal: 'CDT', subcategoria: 'RENOVACIÓN' };
     }
-    if (clean.includes('CERTIFICADO') || clean.includes('SOPORTE') || clean.includes('TITULARIDAD')) {
-      return { categoria_principal: 'CDT', subcategoria: 'CDT - CERTIFICADOS Y SOPORTES' };
+    if (clean.includes('APERTUR') || clean.includes('CONSTITUC') || clean.includes('FORMALIZAC') || clean.includes('CREAC')) {
+      return { categoria_principal: 'CDT', subcategoria: 'APERTURA' };
     }
-    return { categoria_principal: 'CDT', subcategoria: 'CDT - RENDIMIENTOS' };
+    if (clean.includes('VISUALIZ') || clean.includes('APP') || clean.includes('DESAPARECI') || clean.includes('CANALES DIGITALES')) {
+      return { categoria_principal: 'CDT', subcategoria: 'VISUALIZACIÓN' };
+    }
+    if (clean.includes('ANTICIPAD') || clean.includes('CANCELACION') || clean.includes('CANCELAR') || clean.includes('RETIRAR ANTES')) {
+      return { categoria_principal: 'CDT', subcategoria: 'CANCELACIÓN' };
+    }
+    if (clean.includes('PAGO') || clean.includes('NO ENTREGADO') || clean.includes('NO ABONADO') || clean.includes('DESEMBOLS') || clean.includes('REDENCION') || clean.includes('VENCIMIENTO')) {
+      return { categoria_principal: 'CDT', subcategoria: 'PAGO' };
+    }
+    if (clean.includes('RENDIMIENTO') || clean.includes('INTERES') || clean.includes('TASA') || clean.includes('LIQUIDACION')) {
+      return { categoria_principal: 'CDT', subcategoria: 'RENDIMIENTOS / INTERESES' };
+    }
+    return { categoria_principal: 'CDT', subcategoria: 'RENDIMIENTOS / INTERESES' };
   }
 
   // 4. GT5
@@ -788,6 +807,547 @@ export function extractFullContextText(record: PQRInputRecord): string {
     }
   }
   return parts.join(' ');
+}
+
+/**
+ * Deep contextual detection and subcategorization for CDT (Certificados de Depósito a Término)
+ * Strictly adheres to the 8 official subcategories and business rules:
+ * 1. RENDIMIENTOS / INTERESES
+ * 2. RENOVACIÓN
+ * 3. PAGO
+ * 4. CANCELACIÓN
+ * 5. CERTIFICADO DE SALDO O DECEVAL
+ * 6. CERTIFICADOS TRIBUTARIOS
+ * 7. APERTURA
+ * 8. VISUALIZACIÓN
+ */
+export function detectCDT(
+  text: string,
+  submotivo?: string,
+  productoOriginal?: string
+): {
+  matches: boolean;
+  subcategoria: string;
+  intencion: string;
+  problema: string;
+  solicitud: string;
+  resumen: string;
+  evidencia: string;
+  producto_detectado: string;
+  requiere_revision: boolean;
+  motivo_revision?: string;
+} {
+  const lower = (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const submotivoLower = (submotivo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const prodLower = (productoOriginal || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const full = `${lower} ${submotivoLower} ${prodLower}`;
+
+  // Helper to extract evidence snippet around matched keywords
+  const extractEvidence = (keywords: string[]): string => {
+    let bestPos = -1;
+    let matchedKw = '';
+    for (const kw of keywords) {
+      const pos = lower.indexOf(kw);
+      if (pos !== -1 && (bestPos === -1 || pos > bestPos)) {
+        bestPos = pos;
+        matchedKw = kw;
+      }
+    }
+    if (bestPos !== -1) {
+      const start = Math.max(0, bestPos - 25);
+      const end = Math.min(text.length, bestPos + matchedKw.length + 55);
+      return text.slice(start, end).trim();
+    }
+    return text.slice(0, 100).trim();
+  };
+
+  // 1. Explicit CDT check (NEVER classify as CDT solely due to "cuenta")
+  const hasExplicitCDT =
+    /\bcdt\b/i.test(lower) ||
+    /\bcdts\b/i.test(lower) ||
+    lower.includes('certificado de deposito a termino') ||
+    lower.includes('certificados de deposito a termino') ||
+    lower.includes('certificado de deposito') ||
+    lower.includes('certificados de deposito') ||
+    lower.includes('deposito a termino') ||
+    lower.includes('depositos a termino') ||
+    lower.includes('titulo cdt') ||
+    lower.includes('titulos cdt') ||
+    lower.includes('deceval') ||
+    /\bcdt\b/i.test(submotivoLower) ||
+    submotivoLower.includes('certificado de deposito') ||
+    /\bcdt\b/i.test(prodLower) ||
+    prodLower.includes('deposito a termino');
+
+  if (!hasExplicitCDT) {
+    return {
+      matches: false,
+      subcategoria: '',
+      intencion: '',
+      problema: '',
+      solicitud: '',
+      resumen: '',
+      evidencia: '',
+      producto_detectado: 'NO ESPECIFICADO',
+      requiere_revision: false
+    };
+  }
+
+  // Helper to check if text indicates cancellation/maturity
+  const mentionsCancellationOrMaturity =
+    full.includes('cancele') ||
+    full.includes('cancelado') ||
+    full.includes('cancelaron') ||
+    full.includes('se cancelo') ||
+    full.includes('fue cancelado') ||
+    full.includes('ya fue cancelado') ||
+    full.includes('liquidado') ||
+    full.includes('se liquido') ||
+    full.includes('fue liquidado') ||
+    full.includes('vencio') ||
+    full.includes('vencido') ||
+    full.includes('redimido') ||
+    full.includes('redencion');
+
+  // Helper to check if text indicates unpaid money/funds
+  const mentionsUnpaidMoney =
+    full.includes('no me han entregado el dinero') ||
+    full.includes('no me entregaron el dinero') ||
+    full.includes('no han entregado el dinero') ||
+    full.includes('no veo el pago') ||
+    full.includes('no veo reflejado el pago') ||
+    full.includes('no recibi el capital') ||
+    full.includes('no he recibido el capital') ||
+    full.includes('no recibi los recursos') ||
+    full.includes('no he recibido los recursos') ||
+    full.includes('no recibi el dinero') ||
+    full.includes('no me han abonado') ||
+    full.includes('no han abonado') ||
+    full.includes('no se ha abonado') ||
+    full.includes('no me han pagado') ||
+    full.includes('no han pagado') ||
+    full.includes('no veo el dinero') ||
+    full.includes('no aparece el dinero') ||
+    full.includes('pago pendiente') ||
+    full.includes('pago del cdt cancelado') ||
+    full.includes('abono del cdt cancelado') ||
+    full.includes('dinero no ha sido entregado') ||
+    full.includes('dinero no entregado') ||
+    full.includes('no me transfirieron') ||
+    full.includes('no consignaron') ||
+    full.includes('desembolso pendiente') ||
+    full.includes('no me consignaron') ||
+    full.includes('recursos no entregados');
+
+  // -------------------------------------------------------------------------
+  // 6. CERTIFICADOS TRIBUTARIOS
+  // Regla obligatoria: Si el cliente solicita un documento para fines tributarios,
+  // fiscales o de declaración de renta, utiliza CERTIFICADOS TRIBUTARIOS y no CERTIFICADO DE SALDO O DECEVAL.
+  // -------------------------------------------------------------------------
+  const isTributario =
+    full.includes('tributari') ||
+    full.includes('retencion en la fuente') ||
+    full.includes('retefuente') ||
+    full.includes('declaracion de renta') ||
+    full.includes('fines tributarios') ||
+    full.includes('fines fiscales') ||
+    full.includes('soporte tributario') ||
+    full.includes('soportes tributarios') ||
+    full.includes('certificado fiscal') ||
+    full.includes('certificados fiscales') ||
+    full.includes('dian') ||
+    full.includes('informacion exogena') ||
+    full.includes('certificado de retencion');
+
+  if (isTributario) {
+    const ev = extractEvidence([
+      'tributari',
+      'retencion en la fuente',
+      'retefuente',
+      'declaracion de renta',
+      'fiscal',
+      'dian',
+      'exogena'
+    ]);
+    return {
+      matches: true,
+      subcategoria: 'CERTIFICADOS TRIBUTARIOS',
+      intencion: 'Solicitud de certificados tributarios de CDT para efectos fiscales y declaración de renta',
+      problema: 'Inconveniente o solicitud de certificado tributario, retención en la fuente o soporte fiscal de CDT para declaración de renta',
+      solicitud: 'Expedición, corrección y envío del certificado tributario o constancia de retención en la fuente del CDT',
+      resumen: `Cliente solicita certificado tributario o de retención en la fuente de su CDT para declaración de renta.`,
+      evidencia: ev,
+      producto_detectado: 'CDT',
+      requiere_revision: false
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // 5. CERTIFICADO DE SALDO O DECEVAL
+  // Reemplaza la anterior CERTIFICADOS Y SOPORTES.
+  // Certificado de saldo, valores iniciales, constitución, saldo a fecha, o constancias Deceval.
+  // -------------------------------------------------------------------------
+  const isCertificadoSaldoDeceval =
+    full.includes('deceval') ||
+    full.includes('certificado de saldo') ||
+    full.includes('certificado del saldo') ||
+    full.includes('certificacion de saldo') ||
+    full.includes('valores iniciales') ||
+    full.includes('valor inicial') ||
+    full.includes('saldo a fecha') ||
+    full.includes('saldo a una fecha') ||
+    full.includes('saldo a corte') ||
+    full.includes('valores historicos') ||
+    full.includes('valores actuales') ||
+    full.includes('constancia deceval') ||
+    full.includes('soporte deceval') ||
+    full.includes('macrotitulo') ||
+    full.includes('certificado de titularidad') ||
+    full.includes('certificacion de titularidad') ||
+    full.includes('constancia de inversion') ||
+    full.includes('valores registrados') ||
+    ((full.includes('certificado') || full.includes('certificacion') || full.includes('constancia') || full.includes('soporte')) &&
+      (full.includes('saldo') || full.includes('constitucion') || full.includes('titularidad') || full.includes('monto') || full.includes('inversion')));
+
+  if (isCertificadoSaldoDeceval) {
+    const ev = extractEvidence([
+      'deceval',
+      'certificado de saldo',
+      'valores iniciales',
+      'saldo a fecha',
+      'valores historicos',
+      'constancia deceval',
+      'soporte deceval',
+      'titularidad',
+      'certificado'
+    ]);
+    return {
+      matches: true,
+      subcategoria: 'CERTIFICADO DE SALDO O DECEVAL',
+      intencion: 'Solicitud de certificado de saldo, constancia Deceval o soporte de constitución del CDT',
+      problema: 'Solicitud o inconveniente con certificado de saldo, constancia Deceval o información de valores de constitución del CDT',
+      solicitud: 'Expedición y envío de certificado de saldo o constancia Deceval del CDT',
+      resumen: `Cliente solicita certificado de saldo, constancia Deceval o valores de constitución de su CDT.`,
+      evidencia: ev,
+      producto_detectado: 'CDT',
+      requiere_revision: false
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // 4. CANCELACIÓN
+  // Regla obligatoria: Cuando el cliente DESEA CANCELAR o retirar anticipadamente su CDT,
+  // pero todavía no se ha cumplido la fecha de vencimiento.
+  // -------------------------------------------------------------------------
+  const isCancelacionCDT =
+    full.includes('cancelacion anticipada') ||
+    full.includes('cancelar antes de la fecha') ||
+    full.includes('cancelar antes del vencimiento') ||
+    full.includes('cancelar antes de que se cumpla') ||
+    full.includes('retirar antes del vencimiento') ||
+    full.includes('retirar antes del plazo') ||
+    full.includes('retirar mi dinero antes') ||
+    full.includes('retirar anticipadamente') ||
+    full.includes('retiro anticipado') ||
+    full.includes('quiero cancelar mi cdt') ||
+    full.includes('deseo cancelar mi cdt') ||
+    full.includes('deseo cancelar el cdt') ||
+    full.includes('necesito cancelar mi cdt') ||
+    full.includes('solicito cancelar mi cdt') ||
+    full.includes('solicito la cancelacion de mi cdt') ||
+    full.includes('solicito la cancelacion anticipada') ||
+    full.includes('no quiero continuar con el cdt') ||
+    full.includes('condiciones para cancelar mi cdt') ||
+    full.includes('condiciones para cancelar') ||
+    full.includes('no me permiten cancelar el cdt') ||
+    full.includes('penalidad por cancelar') ||
+    full.includes('penalidad por cancelacion') ||
+    ((full.includes('cancelar') || full.includes('cancelacion') || full.includes('retirar')) &&
+      (full.includes('antes') || full.includes('anticipad') || full.includes('plazo') || full.includes('vencimiento') || full.includes('deseo') || full.includes('quiero') || full.includes('solicito')));
+
+  if (isCancelacionCDT) {
+    const ev = extractEvidence([
+      'cancelacion anticipada',
+      'cancelar antes',
+      'retirar antes',
+      'quiero cancelar',
+      'deseo cancelar',
+      'solicito cancelar',
+      'solicito la cancelacion',
+      'no quiero continuar',
+      'condiciones para cancelar'
+    ]);
+    return {
+      matches: true,
+      subcategoria: 'CANCELACIÓN',
+      intencion: 'Solicitud de cancelación anticipada de CDT antes de la fecha de vencimiento',
+      problema: 'Solicitud o inconformidad por trámite de cancelación anticipada o retiro de fondos del CDT antes de su vencimiento',
+      solicitud: 'Autorización y liquidación anticipada del CDT antes de la fecha de vencimiento pactada',
+      resumen: `Cliente solicita la cancelación anticipada o retiro de fondos de su CDT antes de la fecha de vencimiento.`,
+      evidencia: ev,
+      producto_detectado: 'CDT',
+      requiere_revision: false
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // 3. PAGO
+  // Regla obligatoria: Exclusivamente los casos en los que el CDT YA FUE CANCELADO O LIQUIDADO,
+  // pero el cliente manifiesta que NO HA RECIBIDO EL DINERO correspondiente.
+  // -------------------------------------------------------------------------
+  const isPagoCDT =
+    (mentionsCancellationOrMaturity && mentionsUnpaidMoney) ||
+    full.includes('cancele mi cdt y no me') ||
+    full.includes('cancele mi cdt y no he') ||
+    full.includes('cancele mi cdt y no veo') ||
+    full.includes('cdt ya fue cancelado pero no') ||
+    full.includes('cdt cancelado y no recibi') ||
+    full.includes('cdt cancelado pero no') ||
+    full.includes('no me han pagado el cdt cancelado') ||
+    full.includes('pago de mi cdt cancelado') ||
+    full.includes('no recibi el dinero de mi cdt') ||
+    (mentionsCancellationOrMaturity && (full.includes('no me han entregado') || full.includes('no veo el pago') || full.includes('no recibi') || full.includes('no me han abonado') || full.includes('pago pendiente')));
+
+  if (isPagoCDT) {
+    const ev = extractEvidence([
+      'no me han entregado el dinero',
+      'no recibi el capital',
+      'no veo el pago',
+      'no me han abonado',
+      'no me han pagado',
+      'pago del cdt cancelado',
+      'cancelado pero no',
+      'cancele mi cdt'
+    ]);
+    return {
+      matches: true,
+      subcategoria: 'PAGO',
+      intencion: 'Reclamación por no entrega o abono del dinero de CDT cancelado o liquidado',
+      problema: 'CDT cancelado, liquidado o vencido sin que los recursos o capital hayan sido entregados o abonados al cliente',
+      solicitud: 'Abono y entrega inmediata de los recursos correspondientes al CDT cancelado',
+      resumen: `Cliente manifiesta que su CDT fue cancelado o liquidado pero no ha recibido el pago del dinero o capital.`,
+      evidencia: ev,
+      producto_detectado: 'CDT',
+      requiere_revision: false
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // 2. RENOVACIÓN
+  // Renovación automática, renovación que no se realizó, o inconformidad con condiciones al renovar.
+  // -------------------------------------------------------------------------
+  const isRenovacionCDT =
+    full.includes('renovacion') ||
+    full.includes('renovar') ||
+    full.includes('renovaron') ||
+    full.includes('renovo') ||
+    full.includes('renovado') ||
+    full.includes('prorroga') ||
+    full.includes('prorrogo') ||
+    full.includes('prorrogado') ||
+    full.includes('prorrogada');
+
+  if (isRenovacionCDT) {
+    const ev = extractEvidence([
+      'renovacion automatica',
+      'renovaron',
+      'renovo',
+      'no se renovo',
+      'condiciones de renovacion',
+      'renovacion',
+      'renovar',
+      'prorroga'
+    ]);
+    return {
+      matches: true,
+      subcategoria: 'RENOVACIÓN',
+      intencion: 'Reclamación o consulta sobre el proceso o condiciones de renovación del CDT',
+      problema: 'Inconformidad o solicitud sobre la renovación del CDT (automática, no realizada, no autorizada o cambio de condiciones)',
+      solicitud: 'Aclaración, revisión, reversión o ajuste de las condiciones de renovación del CDT',
+      resumen: `Cliente presenta reclamo o solicitud sobre la renovación de su CDT y las condiciones pactadas.`,
+      evidencia: ev,
+      producto_detectado: 'CDT',
+      requiere_revision: false
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // 7. APERTURA
+  // Constitución, apertura, creación o formalización de un CDT.
+  // -------------------------------------------------------------------------
+  const isAperturaMention =
+    full.includes('apertura') ||
+    full.includes('aperturar') ||
+    full.includes('abrir mi cdt') ||
+    full.includes('abrir un cdt') ||
+    full.includes('constitucion') ||
+    full.includes('constituir') ||
+    full.includes('creacion de cdt') ||
+    full.includes('crear un cdt') ||
+    full.includes('formalizacion') ||
+    full.includes('formalizar') ||
+    full.includes('inconvenientes para abrir') ||
+    full.includes('no se constituyo') ||
+    full.includes('no se formalizo') ||
+    full.includes('debitaron pero no abrieron') ||
+    full.includes('solicito la apertura');
+
+  const isAperturaHistoricContextOnly =
+    full.includes('al momento de la apertura') ||
+    full.includes('en el momento de la apertura') ||
+    full.includes('desde la apertura') ||
+    full.includes('pactada en la apertura') ||
+    full.includes('pactada al momento de la apertura') ||
+    full.includes('acordada en la apertura') ||
+    full.includes('condiciones de apertura');
+
+  const isAperturaCDT =
+    isAperturaMention &&
+    !isAperturaHistoricContextOnly && (
+      full.includes('solicito apertura') ||
+      full.includes('solicito la apertura') ||
+      full.includes('abrir') ||
+      full.includes('aperturar') ||
+      full.includes('inconvenientes para abrir') ||
+      full.includes('no se constituyo') ||
+      full.includes('no se formalizo') ||
+      full.includes('debitaron pero no') ||
+      full.includes('creacion de cdt') ||
+      full.includes('crear un cdt') ||
+      full.includes('formalizacion') ||
+      full.includes('formalizar') ||
+      full.includes('constitucion de cdt') ||
+      full.includes('constitucion del cdt') ||
+      full.includes('apertura de cdt') ||
+      full.includes('apertura de un cdt') ||
+      full.includes('apertura del cdt') ||
+      (full.includes('constitucion') && (full.includes('tramite') || full.includes('solicitud') || full.includes('firma') || full.includes('sucursal')))
+    );
+
+  if (isAperturaCDT) {
+    const ev = extractEvidence([
+      'apertura',
+      'aperturar',
+      'abrir',
+      'constitucion',
+      'constituir',
+      'formalizacion',
+      'creacion'
+    ]);
+    return {
+      matches: true,
+      subcategoria: 'APERTURA',
+      intencion: 'Gestión de constitución o apertura formal de CDT',
+      problema: 'Inconvenientes, demora o fallas en la apertura, constitución o formalización del CDT',
+      solicitud: 'Constitución formal, confirmación y activación del CDT solicitado',
+      resumen: `Cliente reporta inconvenientes o solicita la formalización y apertura de su CDT.`,
+      evidencia: ev,
+      producto_detectado: 'CDT',
+      requiere_revision: false
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // 8. VISUALIZACIÓN
+  // Inconvenientes para visualizar el CDT en canales digitales, app o banca virtual.
+  // -------------------------------------------------------------------------
+  const isVisualizacionCDT =
+    full.includes('no puedo ver') ||
+    full.includes('no visualizo') ||
+    full.includes('no aparece') ||
+    full.includes('no se ve') ||
+    full.includes('desaparecio') ||
+    full.includes('no encuentro') ||
+    full.includes('no me muestra') ||
+    full.includes('no figura') ||
+    full.includes('inconvenientes para consultar') ||
+    full.includes('problemas para ver') ||
+    full.includes('error al consultar') ||
+    full.includes('no carga el cdt') ||
+    ((full.includes('visualiz') || full.includes('canales digitales') || full.includes('banca virtual') || full.includes('app') || full.includes('aplicacion')) &&
+      (full.includes('ver') || full.includes('consultar') || full.includes('aparece') || full.includes('carga')));
+
+  if (isVisualizacionCDT) {
+    const ev = extractEvidence([
+      'no aparece',
+      'no puedo ver',
+      'no visualizo',
+      'desaparecio',
+      'no se ve',
+      'inconvenientes para consultar',
+      'visualiz'
+    ]);
+    return {
+      matches: true,
+      subcategoria: 'VISUALIZACIÓN',
+      intencion: 'Problemas para visualizar o consultar CDT en canales digitales o app',
+      problema: 'Inconvenientes para visualizar o consultar la información del CDT en canales digitales o app',
+      solicitud: 'Habilitación técnica y corrección en la visualización del CDT en los canales electrónicos',
+      resumen: `Cliente no puede visualizar o consultar la información de su CDT en los canales digitales o aplicación móvil.`,
+      evidencia: ev,
+      producto_detectado: 'CDT',
+      requiere_revision: false
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // 1. RENDIMIENTOS / INTERESES
+  // Inconformidad con intereses o rendimientos, diferencias entre pactados y liquidados,
+  // tasa, o rendimientos durante el periodo de inversión.
+  // -------------------------------------------------------------------------
+  const isRendimientosCDT =
+    full.includes('rendimiento') ||
+    full.includes('rendimientos') ||
+    full.includes('interes') ||
+    full.includes('intereses') ||
+    full.includes('tasa de interes') ||
+    full.includes('tasa pactada') ||
+    full.includes('liquidacion de rendimientos') ||
+    full.includes('liquidacion de intereses') ||
+    full.includes('calculo de rendimientos') ||
+    full.includes('ganancia') ||
+    full.includes('capitalizacion') ||
+    full.includes('tasa');
+
+  if (isRendimientosCDT) {
+    const ev = extractEvidence([
+      'rendimiento',
+      'rendimientos',
+      'intereses',
+      'interes',
+      'tasa de interes',
+      'tasa pactada',
+      'liquidacion',
+      'calculo de rendimientos'
+    ]);
+    return {
+      matches: true,
+      subcategoria: 'RENDIMIENTOS / INTERESES',
+      intencion: 'Inconformidad o reclamación sobre intereses o rendimientos liquidados de CDT',
+      problema: 'Inconformidad con la liquidación de rendimientos, tasa de interés o intereses generados por el CDT vigente',
+      solicitud: 'Revisión, aclaración y reliquidación de los intereses o rendimientos pactados del CDT',
+      resumen: `Cliente expresa inconformidad con los rendimientos, tasa pactada o liquidación de intereses de su CDT.`,
+      evidencia: ev,
+      producto_detectado: 'CDT',
+      requiere_revision: false
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // REGLA 10: REVISIÓN HUMANA cuando la descripción no permite determinar el motivo
+  // -------------------------------------------------------------------------
+  return {
+    matches: true,
+    subcategoria: 'INFORMACIÓN INSUFICIENTE',
+    intencion: 'Requerimiento sobre CDT con información insuficiente para identificar el motivo',
+    problema: 'El expediente menciona CDT pero no proporciona información suficiente para determinar el motivo de la reclamación',
+    solicitud: 'Contacto con el cliente para aclarar el requerimiento específico sobre su CDT',
+    resumen: `Expediente de CDT requiere revisión humana por descripción insuficiente.`,
+    evidencia: text.slice(0, 100).trim(),
+    producto_detectado: 'CDT',
+    requiere_revision: true,
+    motivo_revision: 'El expediente menciona CDT pero no proporciona información suficiente para determinar el motivo específico de la reclamación.'
+  };
 }
 
 /**
@@ -2393,11 +2953,12 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // Pre-run deep contextual detectors for Cuotas de Crédito, Condiciones, Cuotas de Manejo and Honorarios/Gastos de Cobranza
+  // Pre-run deep contextual detectors for Cuotas de Crédito, Condiciones, Cuotas de Manejo, Honorarios/Gastos de Cobranza and CDT
   const creditoRes = detectCreditoCarteraCuotas(fullContextText, record.submotivo_original || '', detectedProduct);
   const condicionesRes = detectCondicionesCredito(fullContextText, record.submotivo_original || '', detectedProduct);
   const cuotaRes = detectCuotasDeManejo(fullContextText, record.submotivo_original || '', detectedProduct);
   const cobranzaRes = detectHonorariosCobranza(fullContextText, record.submotivo_original || '', detectedProduct);
+  const cdtRes = detectCDT(rawText, record.submotivo_original || record.resumen_original, record.producto_original);
 
   // Clean text from conjunction "sin embargo" so it never triggers false positive EMBARGOS
   const textWithoutSinEmbargo = lower.replace(/\bsin embargo\b/gi, ' ');
@@ -2407,8 +2968,8 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   // =========================================================================
   // PRIORIDAD 1: FRAUDES
   // Si el cliente manifiesta que NO reconoce una operación, compra, producto o movimiento.
-  // Exception: insurance enrollment disputes, condiciones, cuotas de manejo disputes, and cobranza disputes
-  // belong to their specific business rule categories.
+  // Exception: insurance enrollment disputes, condiciones, cuotas de manejo disputes, cobranza disputes,
+  // and CDT operational disputes (such as unauthorized automatic renewal) belong to their specific categories.
   // =========================================================================
   const isInsuranceDispute = lower.includes('seguro') || lower.includes('poliza');
   const isCondicionesDispute = condicionesRes.matches;
@@ -2426,9 +2987,19 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     creditoRes.subcategoria === 'CAMBIO DE FECHA' ||
     creditoRes.subcategoria === 'PLAN DE PAGOS'
   );
+  const isCDTOperationalDispute = cdtRes.matches && (
+    cdtRes.subcategoria === 'RENOVACIÓN' ||
+    cdtRes.subcategoria === 'RENDIMIENTOS / INTERESES' ||
+    cdtRes.subcategoria === 'CANCELACIÓN' ||
+    cdtRes.subcategoria === 'PAGO' ||
+    cdtRes.subcategoria === 'CERTIFICADO DE SALDO O DECEVAL' ||
+    cdtRes.subcategoria === 'CERTIFICADOS TRIBUTARIOS' ||
+    cdtRes.subcategoria === 'VISUALIZACIÓN' ||
+    (cdtRes.subcategoria === 'APERTURA' && !lower.includes('suplant') && !lower.includes('robaron'))
+  );
 
   const isFraudManifestation =
-    !isInsuranceDispute && !isCondicionesDispute && !isCuotaManejoDispute && !isCobranzaDispute && !isCreditoDispute && (
+    !isInsuranceDispute && !isCondicionesDispute && !isCuotaManejoDispute && !isCobranzaDispute && !isCreditoDispute && !isCDTOperationalDispute && (
       lower.includes('no reconozco') ||
       lower.includes('no reconoce') ||
       lower.includes('no reconocid') ||
@@ -2643,48 +3214,39 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
 
   // =========================================================================
   // PRIORIDAD 3: CDT
-  // Únicamente si hace referencia explícita e inequívoca a un CDT.
+  // Únicamente si hace referencia explícita e inequívoca a un Certificado de Depósito a Término.
+  // La palabra "cuenta" NUNCA es CDT.
   // =========================================================================
-  const isExplicitCDT =
-    /\bcdt\b/i.test(lower) ||
-    lower.includes('certificado de deposito a termino') ||
-    lower.includes('certificado de deposito') ||
-    lower.includes('titulo cdt') ||
-    lower.includes('rendimiento cdt') ||
-    lower.includes('redencion cdt') ||
-    lower.includes('vencimiento cdt') ||
-    lower.includes('cancelacion cdt') ||
-    lower.includes('deceval') ||
-    /\bcdt\b/i.test(submotivoLower);
-
-  if (isExplicitCDT) {
-    let sub = 'CDT - RENDIMIENTOS';
-    let intencion = 'Consulta o reclamo sobre rendimientos de CDT';
-    if (lower.includes('no aparece') || lower.includes('no visualiz') || lower.includes('desapareci') || lower.includes('no encuentro') || lower.includes('app')) {
-      sub = 'CDT - VISUALIZACIÓN';
-      intencion = 'Problema para visualizar CDT en canales digitales';
-    } else if (lower.includes('rendimiento') || lower.includes('interes') || lower.includes('liquidacion')) {
-      sub = 'CDT - RENDIMIENTOS';
-      intencion = 'Consulta o reclamo sobre rendimientos o intereses de CDT';
-    } else if (lower.includes('pago') || lower.includes('cancel') || lower.includes('redenc') || lower.includes('vencim') || lower.includes('desembols')) {
-      sub = 'CDT - PAGO / CANCELACIÓN';
-      intencion = 'Redención o pago de CDT por vencimiento o cancelación';
-    } else if (lower.includes('certificad') || lower.includes('soporte') || lower.includes('tributari') || lower.includes('titularidad')) {
-      sub = 'CDT - CERTIFICADOS Y SOPORTES';
-      intencion = 'Solicitud de certificados y soportes de CDT';
+  if (cdtRes.matches) {
+    if (cdtRes.requiere_revision) {
+      return {
+        expediente,
+        categoria_principal: 'REVISIÓN HUMANA',
+        subcategoria: 'INFORMACIÓN INSUFICIENTE',
+        resumen_requerimiento: generateConciseSummary(rawText, 'REVISIÓN HUMANA', 'INFORMACIÓN INSUFICIENTE', 'CDT', `Requerimiento sobre CDT requiere revisión humana por información insuficiente.`),
+        intencion_cliente: cdtRes.intencion,
+        confianza: 65,
+        requiere_revision_humana: true,
+        motivo_de_revision: cdtRes.motivo_revision || 'El expediente menciona CDT pero no proporciona información suficiente para determinar el motivo específico de la reclamación.',
+        producto_detectado: 'CDT',
+        problema_principal: cdtRes.problema,
+        solicitud_cliente: cdtRes.solicitud,
+        evidencia_textual: cdtRes.evidencia
+      };
     }
+
     return {
       expediente,
       categoria_principal: 'CDT',
-      subcategoria: sub,
-      resumen_requerimiento: generateConciseSummary(rawText, 'CDT', sub, 'CDT', `Cliente solicita gestión de su certificado de depósito a término CDT.`),
-      intencion_cliente: intencion,
+      subcategoria: cdtRes.subcategoria,
+      resumen_requerimiento: generateConciseSummary(rawText, 'CDT', cdtRes.subcategoria, 'CDT', cdtRes.resumen),
+      intencion_cliente: cdtRes.intencion,
       confianza: 98,
       requiere_revision_humana: false,
       producto_detectado: 'CDT',
-      problema_principal: 'Gestión o reclamación sobre CDT',
-      solicitud_cliente: intencion,
-      evidencia_textual: rawText.slice(0, 100)
+      problema_principal: cdtRes.problema,
+      solicitud_cliente: cdtRes.solicitud,
+      evidencia_textual: cdtRes.evidencia
     };
   }
 
@@ -3606,11 +4168,13 @@ export function validateClassificationConsistency(
     }
   }
 
-  // 3. Contradiction: Fraud manifestation not categorized as FRAUDES (excluding insurance, cuota de manejo, and cobranza disputes)
+  // 3. Contradiction: Fraud manifestation not categorized as FRAUDES (excluding insurance, cuota de manejo, cobranza, credito, and CDT disputes)
   const isInsurance = lower.includes('seguro') || lower.includes('poliza');
   const isCuotaOrCobranza = result.categoria_principal === 'CUOTAS DE MANEJO' || result.categoria_principal === 'HONORARIOS Y GASTOS DE COBRANZA' || result.categoria_principal === 'CUOTA DE MANEJO';
+  const isCDTOperational = result.categoria_principal === 'CDT';
+  const isCreditoDispute = result.categoria_principal === 'CRÉDITOS / CARTERA' || result.categoria_principal === 'CARTERA / CRÉDITOS' || result.categoria_principal === 'CONDICIONES';
   const hasFraudMention =
-    !isInsurance && !isCuotaOrCobranza && (
+    !isInsurance && !isCuotaOrCobranza && !isCDTOperational && !isCreditoDispute && (
       lower.includes('no reconozco') ||
       lower.includes('yo no hice') ||
       lower.includes('no autorice') ||

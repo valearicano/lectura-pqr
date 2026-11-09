@@ -39,13 +39,17 @@ export const DEFAULT_CATALOG: CategoryItem[] = [
   {
     id: 'cat-cdt',
     nombre: 'CDT',
-    descripcion: 'Certificados de depósito a término explícitos: visualización, rendimientos, pago y certificados Deceval (Prioridad 3)',
+    descripcion: 'Certificados de Depósito a Término (CDT): rendimientos/intereses, renovación, pago, cancelación, certificado de saldo/Deceval, certificados tributarios, apertura y visualización (Prioridad 3)',
     activa: true,
     subcategorias: [
-      { id: 'sub-cdt-1', nombre: 'CDT - VISUALIZACIÓN', activa: true, descripcion: 'Problemas para visualizar el CDT en la aplicación o banca digital' },
-      { id: 'sub-cdt-2', nombre: 'CDT - RENDIMIENTOS', activa: true, descripcion: 'Pago de rendimientos, liquidación de intereses y diferencias de tasas en CDT' },
-      { id: 'sub-cdt-3', nombre: 'CDT - PAGO / CANCELACIÓN', activa: true, descripcion: 'Redención, vencimiento, pago, cancelación o desembolso de CDT' },
-      { id: 'sub-cdt-4', nombre: 'CDT - CERTIFICADOS Y SOPORTES', activa: true, descripcion: 'Certificados Deceval, certificados de titularidad o tributarios de CDT' }
+      { id: 'sub-cdt-1', nombre: 'RENDIMIENTOS / INTERESES', activa: true, descripcion: 'Inconformidad con intereses o rendimientos, diferencias entre intereses pactados y liquidados, tasa, liquidación o intereses no pagados en CDT vigente' },
+      { id: 'sub-cdt-2', nombre: 'RENOVACIÓN', activa: true, descripcion: 'Renovación automática o no realizada, condiciones de renovación, cambios de tasa o plazo al renovar CDT' },
+      { id: 'sub-cdt-3', nombre: 'PAGO', activa: true, descripcion: 'CDT ya cancelado o liquidado donde el dinero o capital no ha sido pagado, entregado o abonado al cliente' },
+      { id: 'sub-cdt-4', nombre: 'CANCELACIÓN', activa: true, descripcion: 'Solicitud de cancelación anticipada o retiro antes del vencimiento del plazo del CDT' },
+      { id: 'sub-cdt-5', nombre: 'CERTIFICADO DE SALDO O DECEVAL', activa: true, descripcion: 'Certificado de saldo, valores iniciales o de constitución, saldo a fecha determinada y constancias Deceval de CDT' },
+      { id: 'sub-cdt-6', nombre: 'CERTIFICADOS TRIBUTARIOS', activa: true, descripcion: 'Certificados tributarios, retención en la fuente, soportes fiscales y documentación para declaración de renta de CDT' },
+      { id: 'sub-cdt-7', nombre: 'APERTURA', activa: true, descripcion: 'Constitución, apertura, creación o formalización de un CDT' },
+      { id: 'sub-cdt-8', nombre: 'VISUALIZACIÓN', activa: true, descripcion: 'Inconvenientes para visualizar el CDT en canales digitales, app o banca virtual' }
     ]
   },
   {
