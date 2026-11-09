@@ -118,17 +118,17 @@ REGLAS DE PRIORIDAD ABSOLUTA:
 0. PAGO A ITAU: Exclusivamente para expedientes con TIPO ORIGEN = ITAU cuando el cliente reporta un pago no reflejado, pendiente, rechazado, demorado o no aplicado a la obligación. Si TIPO ORIGEN no es ITAU, NO asignar esta categoría. Si TIPO ORIGEN es ITAU pero el caso trata de fraude, cuota de manejo, extracto o cupo, asignar esa categoría específica.
 1. FRAUDES: Si el cliente manifiesta no reconocer una compra, débito, transferencia o producto (ej: "no reconozco", "yo no hice", "no autoricé", "no sé qué es", "me robaron", "desconozco"). NO investigar si fue fraude, clasificar inmediatamente como FRAUDES.
 2. PSE: Si el caso menciona PSE (pago, error, soporte de PSE). Si el pago de tarjeta fue por PSE, clasificar como PSE conservando el producto detectado.
-3. CDT: SOLO si menciona explícitamente CDT, certificado de depósito a término o Deceval. ¡La palabra "cuenta" NUNCA es CDT!
+3. CDT: SI LA DESCRIPCIÓN DEL CLIENTE MENCIONA CDT (CDT, Mi CDT, Certificado de depósito a término, Certificado a término, CDT vencido, CDT cancelado, CDT renovado, CDT físico, Inversión CDT, Rendimientos de CDT, c.d.t., Deceval), LA CATEGORÍA PRINCIPAL DEBE SER CDT Y EL PRODUCTO CDT. Esta regla tiene prioridad sobre las categorías generales (CUENTAS, CARTERA, OTRAS). ¡La palabra "cuenta" NUNCA es CDT!
    Subcategorías obligatorias para CDT:
    - RENDIMIENTOS / INTERESES: Inconformidad con intereses o rendimientos, diferencias entre intereses pactados y liquidados, tasa, liquidación o intereses no pagados en CDT vigente. (Si el dinero no ha sido entregado tras la cancelación, es PAGO, no rendimientos).
    - RENOVACIÓN: Renovación automática, renovación no realizada, renovación no autorizada, inconformidad con condiciones, cambios de tasa o plazo al renovar CDT.
    - PAGO: Exclusivamente cuando el CDT YA FUE CANCELADO O LIQUIDADO pero el dinero o capital no ha sido entregado o abonado al cliente.
    - CANCELACIÓN: Cuando el cliente desea cancelar o retirar anticipadamente su CDT antes de la fecha de vencimiento. (NO confundir con PAGO).
-   - CERTIFICADO DE SALDO O DECEVAL: Certificado de saldo, valores iniciales o de constitución, saldo a fecha determinada, o constancias Deceval de CDT. (Reemplaza la antigua categoría general CERTIFICADOS Y SOPORTES. No clasificar aquí certificados tributarios).
+   - CERTIFICADO DE SALDO O DECEVAL: Certificado de saldo, valores iniciales o de constitución, saldo a fecha determinada, constancias Deceval, CDT físico o consultas generales de estado del CDT.
    - CERTIFICADOS TRIBUTARIOS: Certificados tributarios, retención en la fuente, soportes fiscales y documentación para declaración de renta de CDT. (Si solicita documento fiscal o tributario, SIEMPRE usar CERTIFICADOS TRIBUTARIOS).
    - APERTURA: Constitución, apertura, creación o formalización de un CDT.
    - VISUALIZACIÓN: Inconvenientes para visualizar el CDT en canales digitales, app o banca virtual.
-   - REVISIÓN HUMANA: Únicamente si la descripción no permite identificar el motivo de la reclamación sobre el CDT.
+   - REVISIÓN HUMANA: ÚNICAMENTE si la descripción es ruido puro, está vacía o carece por completo de sentido interpretable. Si el texto permite inferir el motivo o es una consulta general sobre el CDT, asignar la subcategoría más cercana (ej: CERTIFICADO DE SALDO O DECEVAL o RENDIMIENTOS / INTERESES). NUNCA enviar a REVISIÓN HUMANA ni a OTRAS por falta de palabras técnicas.
 4. GT5: Casos de cargo a cuenta en oficina, cargo cuenta día, cargo transacción no aplicada o RECUP TRANX.
 5. GMF: 4x1000, marcación, desmarcación o devolución.
 6. CUOTAS DE MANEJO: Cargo, cobro, tarifa de manejo, devolución/reversión, exoneración no aplicada, cobro posterior a cancelación, duplicado o aclaración de cuota de manejo / administración de tarjeta.
@@ -249,7 +249,7 @@ ${JSON.stringify(formattedCases, null, 2)}
 
       // STRICT VALIDATION: If AI tried to assign CDT without explicit CDT mention, reject and reclassify
       const lowerDesc = String(rec.descripcion_original || '').toLowerCase();
-      if (normalized.categoria_principal === 'CDT' && !/\bcdt\b/i.test(lowerDesc) && !lowerDesc.includes('certificado de deposito') && !lowerDesc.includes('deceval')) {
+      if (normalized.categoria_principal === 'CDT' && !/\bcdt\b/i.test(lowerDesc) && !/\bcdts\b/i.test(lowerDesc) && !/\bc\.d\.t\b/i.test(lowerDesc) && !lowerDesc.includes('certificado de deposito') && !lowerDesc.includes('certificado a termino') && !lowerDesc.includes('deposito a termino') && !lowerDesc.includes('inversion cdt') && !lowerDesc.includes('deceval')) {
         const deterministicFix = classifyPQRDeterministic(rec);
         normalized = {
           categoria_principal: deterministicFix.categoria_principal,

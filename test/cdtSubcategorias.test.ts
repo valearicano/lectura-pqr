@@ -313,6 +313,90 @@ export const CDT_TEST_SUITE: CDTTestCase[] = [
     subcategoriaEsperada: ['INFORMACIÓN INSUFICIENTE', 'REVISIÓN HUMANA'],
     requiereRevisionEsperada: true,
     verificar: (a) => a.requiere_revision === true
+  },
+  {
+    id: 23,
+    nombre: 'CDT físico con solicitud de validación de valores',
+    expediente: 'CDT-023',
+    descripcion: 'Tengo un CDT físico guardado en mi casa y necesito validar los valores iniciales y el saldo a la fecha en el sistema.',
+    submotivo: 'CDT físico',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'CERTIFICADO DE SALDO O DECEVAL',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'CERTIFICADO DE SALDO O DECEVAL' && a.producto_detectado === 'CDT'
+  },
+  {
+    id: 24,
+    nombre: 'Inversión CDT y rendimientos generados',
+    expediente: 'CDT-024',
+    descripcion: 'Tengo una reclamación sobre los rendimientos de mi inversión CDT ya que la ganancia es menor a la pactada.',
+    submotivo: 'Inversión CDT',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'RENDIMIENTOS / INTERESES',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'RENDIMIENTOS / INTERESES' && a.producto_detectado === 'CDT'
+  },
+  {
+    id: 25,
+    nombre: 'Certificado a término con retiro anticipado',
+    expediente: 'CDT-025',
+    descripcion: 'Necesito conocer las condiciones para retirar antes de tiempo el dinero de mi certificado a término sin tantas trabas.',
+    submotivo: 'Certificado a término',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'CANCELACIÓN',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'CANCELACIÓN' && a.producto_detectado === 'CDT'
+  },
+  {
+    id: 26,
+    nombre: 'Abreviatura c.d.t. vencido y recursos no entregados',
+    expediente: 'CDT-026',
+    descripcion: 'Mi c.d.t. venció el mes pasado, se liquidó pero no me han consignado los recursos en mi cuenta bancaria.',
+    submotivo: 'c.d.t.',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'PAGO',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'PAGO' && a.producto_detectado === 'CDT'
+  },
+  {
+    id: 27,
+    nombre: 'CDT renovado sin avisar',
+    expediente: 'CDT-027',
+    descripcion: 'El CDT renovado sin avisarme no tiene las condiciones que yo quería, exijo revisar esa prórroga.',
+    submotivo: 'CDT renovado',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'RENOVACIÓN',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'RENOVACIÓN' && a.producto_detectado === 'CDT'
+  },
+  {
+    id: 28,
+    nombre: 'CDT no carga en portal o canales digitales',
+    expediente: 'CDT-028',
+    descripcion: 'Mi CDT no carga en el portal web de la banca virtual y no puedo ver los detalles de mi título.',
+    submotivo: 'Portal web',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'VISUALIZACIÓN',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'VISUALIZACIÓN' && a.producto_detectado === 'CDT'
+  },
+  {
+    id: 29,
+    nombre: 'Consulta general de CDT sin palabra clave técnica asigna subcategoría contextual sin revisión humana',
+    expediente: 'CDT-029',
+    descripcion: 'Solicito información general sobre el estado actual y los soportes de mi CDT en la entidad.',
+    submotivo: 'Consulta general',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'CERTIFICADO DE SALDO O DECEVAL',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && !a.requiere_revision
   }
 ];
 

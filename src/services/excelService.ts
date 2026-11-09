@@ -83,12 +83,19 @@ export function exportEnrichedExcel(
     const nivelConfianza = a?.nivel_confianza || (conf >= 85 ? 'Alta' : conf >= 70 ? 'Media' : 'Baja');
     const reqRev = a?.requiere_revision_humana === 'SI' || a?.requiere_revision || catPrincipal === 'REVISIÓN HUMANA' ? 'SI' : 'NO';
 
-    // 2. Append required classification columns (no automated payment/date extraction columns)
+    // Exact 5 agent outputs specified by business rules
+    row['CATEGORÍA'] = catPrincipal;
+    row['SUBCATEGORÍA'] = a?.subcategoria_ia || subcat;
+    row['PRODUCTO'] = a?.producto_detectado || a?.producto || 'NO ESPECIFICADO';
+    row['QUÉ QUIERE EL CLIENTE'] = a?.solicitud_cliente || a?.que_solicita_exactamente || '';
+    row['RESUMEN EJECUTIVO'] = a?.resumen_normalizado || resumenReq;
+
+    // Standard master columns
     row['CATEGORÍA PRINCIPAL'] = catPrincipal;
     row['SUBCATEGORÍA IA'] = a?.subcategoria_ia || subcat;
     row['PRODUCTO DETECTADO'] = a?.producto_detectado || a?.producto || 'NO ESPECIFICADO';
     row['PROBLEMA PRINCIPAL'] = a?.problema_principal || '';
-    row['SOLICITUD DEL CLIENTE'] = a?.solicitud_cliente || '';
+    row['SOLICITUD DEL CLIENTE'] = a?.solicitud_cliente || a?.que_solicita_exactamente || '';
     row['RESUMEN NORMALIZADO'] = a?.resumen_normalizado || resumenReq;
     row['EVIDENCIA DE CLASIFICACIÓN'] = a?.evidencia_clasificacion || a?.evidencia_textual || '';
     row['NIVEL DE CONFIANZA'] = nivelConfianza;
