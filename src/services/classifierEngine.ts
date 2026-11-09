@@ -28,6 +28,7 @@ export interface PQRClassificationResult {
   problema_principal: string;
   solicitud_cliente: string;
   evidencia_textual: string;
+  propuesta_respuesta?: string;
   fecha_pago?: string;
   valor_pago?: string;
   pagos_detectados?: {
@@ -4278,8 +4279,9 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
  */
 export function validateClassificationConsistency(
   record: PQRInputRecord,
-  result: PQRClassificationResult
+  result?: PQRClassificationResult
 ): PQRClassificationResult {
+  const activeResult = result || classifyPQRDeterministic(record);
   const rawText = String(record.descripcion_original || '');
   const lower = rawText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const submotivoLower = String(record.submotivo_original || record.resumen_original || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -4287,7 +4289,7 @@ export function validateClassificationConsistency(
   const textWithoutSinEmbargo = lower.replace(/\bsin embargo\b/gi, ' ');
 
   // 1. Contradiction: EMBARGOS triggered by "sin embargo" without any judicial terms
-  if (result.categoria_principal === 'EMBARGOS') {
+  if (activeResult.categoria_principal === 'EMBARGOS') {
     const hasRealEmbargoTerms =
       textWithoutSinEmbargo.includes('desembargo') ||
       textWithoutSinEmbargo.includes('levantar embargo') ||
@@ -4314,7 +4316,7 @@ export function validateClassificationConsistency(
   }
 
   // 2. Contradiction: CDT without explicit CDT mention
-  if (result.categoria_principal === 'CDT') {
+  if (activeResult.categoria_principal === 'CDT') {
     const hasExplicitCDT =
       /\bcdt\b/i.test(lower) ||
       /\bcdts\b/i.test(lower) ||
@@ -4364,9 +4366,9 @@ export function validateClassificationConsistency(
 
   // 3. Contradiction: Fraud manifestation not categorized as FRAUDES (excluding insurance, cuota de manejo, cobranza, credito, and CDT disputes)
   const isInsurance = lower.includes('seguro') || lower.includes('poliza');
-  const isCuotaOrCobranza = result.categoria_principal === 'CUOTAS DE MANEJO' || result.categoria_principal === 'HONORARIOS Y GASTOS DE COBRANZA' || result.categoria_principal === 'CUOTA DE MANEJO';
-  const isCDTOperational = result.categoria_principal === 'CDT';
-  const isCreditoDispute = result.categoria_principal === 'CRÉDITOS / CARTERA' || result.categoria_principal === 'CARTERA / CRÉDITOS' || result.categoria_principal === 'CONDICIONES';
+  const isCuotaOrCobranza = activeResult.categoria_principal === 'CUOTAS DE MANEJO' || activeResult.categoria_principal === 'HONORARIOS Y GASTOS DE COBRANZA' || activeResult.categoria_principal === 'CUOTA DE MANEJO';
+  const isCDTOperational = activeResult.categoria_principal === 'CDT';
+  const isCreditoDispute = activeResult.categoria_principal === 'CRÉDITOS / CARTERA' || activeResult.categoria_principal === 'CARTERA / CRÉDITOS' || activeResult.categoria_principal === 'CONDICIONES';
   const hasFraudMention =
     !isInsurance && !isCuotaOrCobranza && !isCDTOperational && !isCreditoDispute && (
       lower.includes('no reconozco') ||
@@ -4377,9 +4379,9 @@ export function validateClassificationConsistency(
       lower.includes('compra no reconocida')
     );
 
-  if (hasFraudMention && result.categoria_principal !== 'FRAUDES') {
+  if (hasFraudMention && activeResult.categoria_principal !== 'FRAUDES') {
     return {
-      ...result,
+      ...activeResult,
       categoria_principal: 'FRAUDES',
       subcategoria: 'OPERACIÓN NO RECONOCIDA',
       confianza: 98,
@@ -4393,9 +4395,9 @@ export function validateClassificationConsistency(
   const tipoOrigenVal = extractTipoOrigen(record);
   const isItau = isTipoOrigenItau(tipoOrigenVal);
 
-  if (result.categoria_principal === 'PAGO A ITAU' && !isItau) {
+  if (activeResult.categoria_principal === 'PAGO A ITAU' && !isItau) {
     return {
-      ...result,
+      ...activeResult,
       categoria_principal: 'PAGOS / ABONOS',
       subcategoria: 'APLICACIÓN DE PAGO',
       existe_inconsistencia: 'SI',
@@ -4404,7 +4406,7 @@ export function validateClassificationConsistency(
   }
 
   // 5. Contradiction: Expediente with TIPO ORIGEN = ITAU and payment unapplied issue not assigned PAGO A ITAU
-  if (isItau && isPaymentUnappliedIssue(rawText) && result.categoria_principal !== 'PAGO A ITAU' && result.categoria_principal !== 'FRAUDES' && result.categoria_principal !== 'PSE') {
+  if (isItau && isPaymentUnappliedIssue(rawText) && activeResult.categoria_principal !== 'PAGO A ITAU' && activeResult.categoria_principal !== 'FRAUDES' && activeResult.categoria_principal !== 'PSE') {
     const fixedItau = classifyPQRDeterministic(record);
     return {
       ...fixedItau,
@@ -4414,7 +4416,7 @@ export function validateClassificationConsistency(
   }
 
   // 6. Contradiction: CUOTAS DE MANEJO assigned to loan/credit installments or ambiguous quotas without management fee evidence
-  if (result.categoria_principal === 'CUOTAS DE MANEJO' || result.categoria_principal === 'CUOTA DE MANEJO') {
+  if (activeResult.categoria_principal === 'CUOTAS DE MANEJO' || activeResult.categoria_principal === 'CUOTA DE MANEJO') {
     const hasExplicitManejoOrAdmin =
       lower.includes('manejo') ||
       lower.includes('manjo') ||
@@ -4441,7 +4443,7 @@ export function validateClassificationConsistency(
 
       if (isLoanOrCredit) {
         return {
-          ...result,
+          ...activeResult,
           categoria_principal: 'CRÉDITOS / CARTERA',
           subcategoria: 'VALOR DE LA CUOTA Y PLAN DE PAGOS',
           producto_detectado: 'CRÉDITOS / CARTERA',
@@ -4454,7 +4456,7 @@ export function validateClassificationConsistency(
       const mentionsQuotaOnly = lower.includes('cuota') || lower.includes('cuotas');
       if (mentionsQuotaOnly) {
         return {
-          ...result,
+          ...activeResult,
           categoria_principal: 'REVISIÓN HUMANA',
           subcategoria: 'INFORMACIÓN INSUFICIENTE',
           confianza: 40,
@@ -4469,14 +4471,14 @@ export function validateClassificationConsistency(
   }
 
   // 7. Contradiction: CONDICIONES assigned to pure contract copy or info request without discontent, or pure late interest
-  if (result.categoria_principal === 'CONDICIONES') {
+  if (activeResult.categoria_principal === 'CONDICIONES') {
     const isContractCopyOnly =
       (lower.includes('copia de mi contrato') || lower.includes('copia del contrato') || lower.includes('copia de contrato')) &&
       !lower.includes('no acepto') && !lower.includes('no estoy de acuerdo') && !lower.includes('inconform') && !lower.includes('reclamo') && !lower.includes('cambiaron') && !lower.includes('modificaron');
 
     if (isContractCopyOnly) {
       return {
-        ...result,
+        ...activeResult,
         categoria_principal: 'INFORMACIÓN Y DOCUMENTOS',
         subcategoria: 'EXTRACTOS Y DOCUMENTOS',
         existe_inconsistencia: 'SI',
@@ -4490,7 +4492,7 @@ export function validateClassificationConsistency(
 
     if (isInfoOnly) {
       return {
-        ...result,
+        ...activeResult,
         categoria_principal: 'INFORMACIÓN Y DOCUMENTOS',
         subcategoria: 'CERTIFICADOS Y PAZ Y SALVO',
         existe_inconsistencia: 'SI',
@@ -4504,7 +4506,7 @@ export function validateClassificationConsistency(
 
     if (isLateInterestOnly) {
       return {
-        ...result,
+        ...activeResult,
         categoria_principal: 'COMISIONES Y COBROS',
         subcategoria: 'INTERESES',
         existe_inconsistencia: 'SI',
@@ -4513,7 +4515,207 @@ export function validateClassificationConsistency(
     }
   }
 
-  return result;
+  return activeResult;
+}
+
+/**
+ * Generates a concise, professional, and compliant response proposal.
+ * Strictly adheres to prompt section 5 guidelines:
+ * - Recognizes the customer's inconvenience.
+ * - Directly relates to the identified problem.
+ * - Proposes orientation or viable operational management when sufficient info exists.
+ * - Uses clear, respectful, professional language.
+ * - Never invents policies, procedures, dates, amounts, decisions, or bank approvals.
+ * - Never claims an action has already occurred without evidence.
+ * - Never commits the bank to an unverified outcome.
+ * - Returns "NO APLICA - INFORMACIÓN INSUFICIENTE PARA PROPONER RESPUESTA." when info is insufficient.
+ * - Returns "NO APLICA - REQUIERE VALIDACIÓN INTERNA." when internal investigation is required (fraud, identity theft, embargo, inconsistencies).
+ */
+export function generatePropuestaRespuesta(
+  desc: string,
+  catPrincipal: string,
+  subcat: string,
+  producto: string,
+  problema: string,
+  isHumanReview: boolean,
+  inconsistencia = false
+): string {
+  const clean = (desc || '').trim();
+  const lower = clean.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const meaningfulWords = lower.replace(/[^a-z0-9\s]/gi, ' ').split(/\s+/).filter(w => w.length > 2);
+
+  // 1. Condition: Insufficient information
+  if (
+    clean.length < 8 ||
+    meaningfulWords.length < 4 ||
+    subcat === 'INFORMACIÓN INSUFICIENTE' ||
+    catPrincipal === 'INFORMACIÓN INSUFICIENTE' ||
+    lower === 'tengo un cdt en el banco' ||
+    lower === 'tengo un cdt' ||
+    lower === 'tengo una tarjeta' ||
+    lower === 'tengo un credito'
+  ) {
+    return 'NO APLICA - INFORMACIÓN INSUFICIENTE PARA PROPONER RESPUESTA.';
+  }
+
+  // 2. Condition: Requires internal validation / audit
+  // Fraud manifestation, identity theft, judicial embargos, or flagged operational contradictions
+  const isFraud =
+    catPrincipal === 'FRAUDES' ||
+    catPrincipal === 'FRAUDE / SUPLANTACIÓN' ||
+    catPrincipal.includes('FRAUDE') ||
+    subcat.includes('SUPLANTACIÓN') ||
+    subcat.includes('OPERACIÓN NO RECONOCIDA') ||
+    lower.includes('suplant') ||
+    lower.includes('clonac') ||
+    lower.includes('robaron') ||
+    lower.includes('hurto');
+
+  const isEmbargo =
+    catPrincipal === 'EMBARGOS' ||
+    catPrincipal === 'EMBARGOS DE CUENTAS' ||
+    (lower.includes('embargo') && !lower.includes('sin embargo'));
+
+  if (isFraud || isEmbargo || inconsistencia) {
+    return 'NO APLICA - REQUIERE VALIDACIÓN INTERNA.';
+  }
+
+  // 3. Category-specific professional proposals
+  const cat = catPrincipal.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const sub = subcat.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const prodLabel = producto && producto !== 'NO ESPECIFICADO' ? ` de su ${producto.toLowerCase()}` : '';
+
+  // 3.1 PAGO A ITAU
+  if (cat.includes('PAGO A ITAU') || cat.includes('PAGO ITAU')) {
+    if (sub.includes('TRANSFERENCIA')) {
+      return 'Se acusa recibo del reporte sobre transferencia no abonada a la obligación; se propone solicitar el comprobante emisor y validar con Operaciones la acreditación de los fondos.';
+    }
+    if (sub.includes('COMPROBANTE')) {
+      return 'Se atiende su solicitud de comprobante de pago; se propone verificar el registro en el sistema bancario y suministrar el soporte de la transacción realizada.';
+    }
+    if (sub.includes('DUPLICADO')) {
+      return 'Se atiende su reporte sobre posible duplicidad de pago; se propone conciliar los abonos registrados en el extracto y gestionar el ajuste o reversión en caso de comprobarse el cobro doble.';
+    }
+    if (sub.includes('DEMORA') || sub.includes('RECHAZ')) {
+      return 'Se reconoce la demora en la aplicación del pago informado; se propone rastrear la transacción y coordinar con el área de cartera su imputación a la obligación.';
+    }
+    return 'Se acusa recibo del reporte sobre el pago no reflejado en su obligación; se propone validar el comprobante aportado y coordinar con Operaciones la actualización del saldo.';
+  }
+
+  // 3.2 CDT
+  if (cat === 'CDT') {
+    if (sub.includes('TRIBUTARI')) {
+      return 'Se atiende su solicitud de documentación fiscal; se propone generar y remitir a sus canales registrados el certificado tributario y de retención en la fuente de su CDT.';
+    }
+    if (sub.includes('CERTIFICADO') || sub.includes('SALDO') || sub.includes('DECEVAL')) {
+      return 'Se atiende su solicitud de certificación; se propone expedir la constancia de saldo y soporte de custodia Deceval de su CDT y remitirla a sus datos de contacto registrados.';
+    }
+    if (sub.includes('RENOVAC')) {
+      return 'Se acusa recibo de su inconformidad respecto a la renovación de su CDT; se propone remitir el caso al área de Inversiones para revisar las condiciones pactadas y contactar al cliente con el estado del título.';
+    }
+    if (sub.includes('CANCELAC')) {
+      return 'Se atiende su solicitud de cancelación anticipada del CDT; se propone orientar al cliente sobre los requisitos, términos y trámite de redención anticipada de su título.';
+    }
+    if (sub.includes('PAGO')) {
+      return 'Se atiende su reporte sobre los recursos no recibidos tras la liquidación del CDT; se propone verificar el estado de la transferencia y confirmar la acreditación de los fondos en su cuenta.';
+    }
+    if (sub.includes('APERTUR')) {
+      return 'Se reconoce el inconveniente presentado en la apertura del CDT; se propone verificar el débito y el estado de formalización para culminar el trámite o gestionar la devolución correspondiente.';
+    }
+    if (sub.includes('VISUALIZ')) {
+      return 'Se reconoce la dificultad para visualizar el CDT en canales digitales; se propone remitir el reporte técnico a soporte de canales para habilitar la consulta del producto.';
+    }
+    return 'Se acusa recibo de su consulta sobre la liquidación de rendimientos del CDT; se propone realizar la revisión del cálculo de intereses pactados frente a los liquidados e informar el detalle.';
+  }
+
+  // 3.3 CUOTAS DE MANEJO
+  if (cat.includes('CUOTA DE MANEJO') || cat.includes('CUOTAS DE MANEJO')) {
+    if (sub.includes('CANCEL') || sub.includes('POSTERIOR') || sub.includes('SIN USO')) {
+      return 'Se atiende su reclamación por cobro de cuota de manejo posterior a la cancelación o inactividad del producto; se propone validar el estado de cierre y revisar la procedencia del ajuste de los cargos facturados.';
+    }
+    if (sub.includes('EXONERAC') || sub.includes('BENEFICIO')) {
+      return 'Se atiende su solicitud referente al beneficio de exoneración de cuota de manejo; se propone verificar las condiciones comerciales acordadas para validar la aplicación de la exoneración.';
+    }
+    if (sub.includes('DUPLICAD')) {
+      return 'Se acusa recibo de su reporte por cobro duplicado de cuota de manejo; se propone revisar los movimientos del periodo y gestionar la corrección del cobro reiterado si procede.';
+    }
+    if (sub.includes('DEVOL') || sub.includes('REVERSION')) {
+      return 'Se acusa recibo de su solicitud de devolución de cuota de manejo; se propone validar los cobros facturados en su extracto y someter a estudio la viabilidad del reintegro.';
+    }
+    return 'Se acusa recibo de su inconformidad con el cobro de cuota de manejo facturado; se propone revisar las tarifas vigentes del producto y brindar una explicación detallada de los cargos aplicados.';
+  }
+
+  // 3.4 HONORARIOS Y GASTOS DE COBRANZA
+  if (cat.includes('HONORARIO') || cat.includes('COBRANZA')) {
+    if (sub.includes('NO ESTABA EN MORA') || sub.includes('AL DIA')) {
+      return 'Se acusa recibo de su inconformidad con el cobro de gastos de cobranza; se propone validar las fechas de pago y el estado de la obligación para verificar la procedencia del cargo.';
+    }
+    if (sub.includes('DESPUES DEL PAGO')) {
+      return 'Se atiende su reclamo por cobros de cobranza posteriores al pago de la obligación; se propone conciliar la fecha de aplicación del pago y evaluar el ajuste de los cobros generados.';
+    }
+    if (sub.includes('SOPORTE') || sub.includes('INFORMAC')) {
+      return 'Se atiende su solicitud de soportes sobre cobros de cobranza; se propone requerir a la casa de cobranza el detalle de las gestiones efectuadas para remitirlo al cliente.';
+    }
+    return 'Se acusa recibo de su requerimiento sobre cobros de gestión de cobranza; se propone revisar las gestiones registradas y la tarifa aplicada para suministrar la aclaración correspondiente.';
+  }
+
+  // 3.5 CRÉDITOS / CARTERA / CONDICIONES
+  if (cat.includes('CREDITO') || cat.includes('CARTERA') || cat.includes('CONDICION')) {
+    if (sub.includes('PLAN DE PAGOS')) {
+      return 'Se acusa recibo de su solicitud sobre el plan de pagos de su crédito; se propone remitir la tabla de amortización actualizada y la explicación del valor de sus cuotas.';
+    }
+    if (sub.includes('AUMENTO DE CUOTA')) {
+      return 'Se atiende su consulta sobre la variación en el valor de su cuota; se propone revisar la composición de intereses, seguros y capital para explicar el ajuste presentado.';
+    }
+    if (sub.includes('FRECH')) {
+      return 'Se atiende su requerimiento sobre el beneficio del subsidio FRECH; se propone verificar el estado de cobertura del crédito con la entidad administradora y brindar la información al cliente.';
+    }
+    if (sub.includes('ENDOSO')) {
+      return 'Se atiende su trámite de endoso de póliza para su crédito; se propone revisar el cumplimiento de los requisitos de la aseguradora para formalizar la aceptación del endoso.';
+    }
+    if (sub.includes('REVERSION') || sub.includes('REAPLICAC')) {
+      return 'Se atiende su solicitud de revisión y reaplicación de pagos en su crédito; se propone conciliar los abonos registrados y ajustar la imputación a capital e intereses si corresponde.';
+    }
+    if (sub.includes('CAMBIO DE FECHA')) {
+      return 'Se acusa recibo de su solicitud de cambio de fecha de pago; se propone orientar al cliente sobre las alternativas y condiciones para modificar la fecha de corte de su obligación.';
+    }
+    return 'Se atiende su solicitud de revisión sobre las condiciones pactadas en su producto de crédito; se propone validar las condiciones comerciales suscritas y emitir la respuesta explicativa.';
+  }
+
+  // 3.6 PSE
+  if (cat.includes('PSE')) {
+    if (sub.includes('ERROR') || sub.includes('FALLA')) {
+      return 'Se atiende su reporte por transacción rechazada o fallida a través de PSE; se propone validar el estado del débito con la entidad financiera de origen y la pasarela de pagos.';
+    }
+    return 'Se atiende su consulta sobre el comprobante de pago por PSE; se propone suministrar el soporte y verificar la acreditación de la transacción en el comercio destino.';
+  }
+
+  // 3.7 GMF (4x1000)
+  if (cat.includes('GMF') || cat.includes('4X1000')) {
+    if (sub.includes('DESMARCA')) {
+      return 'Se atiende su solicitud de desmarcación del gravamen a los movimientos financieros; se propone verificar los requisitos normativos y el estado de la cuenta para tramitar la desmarcación.';
+    }
+    if (sub.includes('MARCA')) {
+      return 'Se atiende su solicitud de marcación de cuenta exenta de 4x1000; se propone validar que el cliente no posea otra cuenta exenta activa y aplicar la exoneración según la ley.';
+    }
+    return 'Se atiende su consulta sobre cobros del gravamen a los movimientos financieros; se propone revisar los movimientos débitos gravados y remitir la explicación de las tarifas legales.';
+  }
+
+  // 3.8 SEGUROS
+  if (cat.includes('SEGURO') || cat.includes('POLIZA')) {
+    if (sub.includes('CANCEL')) {
+      return 'Se acusa recibo de su solicitud de cancelación de póliza de seguro; se propone remitir el trámite a la aseguradora para gestionar la baja y evaluar la procedencia de devolución de primas no devengadas.';
+    }
+    return 'Se atiende su requerimiento sobre los cobros de seguros asociados a su producto; se propone validar las condiciones de suscripción de la póliza y emitir la aclaración correspondiente.';
+  }
+
+  // 3.9 TARJETAS DE CRÉDITO
+  if (cat.includes('TARJETA')) {
+    return `Se atiende la reclamación del cliente sobre su tarjeta de crédito respecto a ${problema || subcat.toLowerCase()}; se propone revisar los movimientos y condiciones del producto para emitir la orientación oportuna.`;
+  }
+
+  // 3.10 General fallback with sufficient information
+  return `Se acusa recibo de su requerimiento sobre ${problema || subcat.toLowerCase()}${prodLabel}; se propone validar los antecedentes en los sistemas internos y emitir respuesta orientativa al cliente.`;
 }
 
 /**
@@ -4521,7 +4723,7 @@ export function validateClassificationConsistency(
  */
 export function buildPQRSAnalysis(
   record: PQRInputRecord,
-  result: PQRClassificationResult
+  result?: PQRClassificationResult
 ): PQRSAnalysis {
   // Validate consistency independently before final build
   const validated = validateClassificationConsistency(record, result);
@@ -4531,6 +4733,18 @@ export function buildPQRSAnalysis(
   const subcat = validated.subcategoria;
   const isHumanReview = catPrincipal === 'REVISIÓN HUMANA' || validated.requiere_revision_humana;
   const conf = Math.min(100, Math.max(0, validated.confianza));
+
+  const propuestaRespuesta =
+    validated.propuesta_respuesta ||
+    generatePropuestaRespuesta(
+      record.descripcion_original,
+      catPrincipal,
+      subcat,
+      validated.producto_detectado || record.producto_original || 'NO ESPECIFICADO',
+      validated.problema_principal || shortSummary,
+      isHumanReview,
+      validated.existe_inconsistencia === 'SI'
+    );
 
   return {
     numero_expediente: record.numero_expediente,
@@ -4565,6 +4779,7 @@ export function buildPQRSAnalysis(
     resumen_normalizado: shortSummary,
     justificacion: `Agrupado bajo ${catPrincipal} > ${subcat} con base en la evidencia textual y reglas de negocio.`,
     nivel_confianza: conf >= 85 ? 'Alta' : conf >= 70 ? 'Media' : 'Baja',
+    propuesta_respuesta: propuestaRespuesta,
     modelo_ia: 'gemini-3.8-flash',
     version_prompt: 'v4.1.0-tarjetas-credito-mejoradas',
     fecha_analisis: new Date().toISOString(),

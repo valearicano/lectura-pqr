@@ -42,9 +42,175 @@ export async function parseExcelFile(file: File): Promise<ParsedSheetData> {
 }
 
 /**
+ * Canonical 9 analysis columns in strict requested order
+ */
+export const CANONICAL_ANALYSIS_COLUMNS = [
+  'CATEGORIA PRINCIPAL',
+  'SUBCATEGORIA IA',
+  'PRODUCTO DETECTADO',
+  'PROBLEMA PRINCIPAL',
+  'RESUMEN',
+  'EVIDENCIA',
+  'PROPUESTA DE RESPUESTA',
+  'NIVEL DE CONFIANZA',
+  'REQUIERE REVISIÓN'
+] as const;
+
+/**
+ * Legacy/duplicate column keys that must be stripped from source records if previously present
+ */
+const LEGACY_ANALYSIS_KEYS = new Set([
+  'CATEGORIA PRINCIPAL',
+  'CATEGORÍA PRINCIPAL',
+  'CATEGORIA',
+  'CATEGORÍA',
+  'CATEGORIA_PRINCIPAL',
+  'CATEGORÍA_PRINCIPAL',
+  'CATEGORIA_IA',
+  'CATEGORÍA_IA',
+  'SUBCATEGORIA IA',
+  'SUBCATEGORÍA IA',
+  'SUBCATEGORIA',
+  'SUBCATEGORÍA',
+  'SUBCATEGORIA_IA',
+  'SUBCATEGORÍA_IA',
+  'PRODUCTO DETECTADO',
+  'PRODUCTO_DETECTADO',
+  'PRODUCTO',
+  'PROBLEMA PRINCIPAL',
+  'PROBLEMA_PRINCIPAL',
+  'SOLICITUD DEL CLIENTE',
+  'SOLICITUD_CLIENTE',
+  'QUÉ QUIERE EL CLIENTE',
+  'QUE QUIERE EL CLIENTE',
+  'RESUMEN',
+  'RESUMEN NORMALIZADO',
+  'RESUMEN_NORMALIZADO',
+  'RESUMEN EJECUTIVO',
+  'RESUMEN_EJECUTIVO',
+  'RESUMEN REQUERIMIENTO',
+  'RESUMEN_REQUERIMIENTO',
+  'EVIDENCIA',
+  'EVIDENCIA DE CLASIFICACIÓN',
+  'EVIDENCIA DE CLASIFICACION',
+  'EVIDENCIA_CLASIFICACION',
+  'EVIDENCIA_TEXTUAL',
+  'PROPUESTA DE RESPUESTA',
+  'PROPUESTA_RESPUESTA',
+  'NIVEL DE CONFIANZA',
+  'NIVEL_CONFIANZA',
+  'CONFIANZA',
+  'REQUIERE REVISIÓN',
+  'REQUIERE REVISION',
+  'REQUIERE_REVISION',
+  'REQUIERE_REVISION_HUMANA',
+  'POSIBLE_INCONSISTENCIA',
+  'MOTIVO_DE_REVISION',
+  'MOTIVO_REVISION',
+  'FECHA DEL PAGO',
+  'VALOR DEL PAGO',
+  'FECHA DEL PAGO 2',
+  'VALOR DEL PAGO 2'
+]);
+
+/**
+ * Normalizes Nivel de Confianza strictly to: 'ALTO' | 'MEDIO' | 'BAJO'
+ */
+export function normalizeNivelConfianza(a?: EnrichedPQRSRecord['analisis']): 'ALTO' | 'MEDIO' | 'BAJO' {
+  const raw = (a?.nivel_confianza || '').toString().trim().toUpperCase();
+  if (raw === 'ALTO' || raw === 'ALTA' || raw.startsWith('ALT')) return 'ALTO';
+  if (raw === 'BAJO' || raw === 'BAJA' || raw.startsWith('BAJ')) return 'BAJO';
+  if (raw === 'MEDIO' || raw === 'MEDIA' || raw.startsWith('MED')) return 'MEDIO';
+
+  if (typeof a?.confianza === 'number') {
+    if (a.confianza >= 85) return 'ALTO';
+    if (a.confianza >= 70) return 'MEDIO';
+    return 'BAJO';
+  }
+  return 'MEDIO';
+}
+
+/**
+ * Normalizes Requiere Revisión strictly to: 'SI' | 'NO'
+ */
+export function normalizeRequiereRevision(a?: EnrichedPQRSRecord['analisis']): 'SI' | 'NO' {
+  if (!a) return 'NO';
+  if (
+    a.requiere_revision_humana === 'SI' ||
+    a.requiere_revision === true ||
+    a.categoria === 'REVISIÓN HUMANA' ||
+    a.categoria_principal === 'REVISIÓN HUMANA'
+  ) {
+    return 'SI';
+  }
+  return 'NO';
+}
+
+/**
+ * Builds the single-truth canonical analysis row for export
+ */
+export function buildExportRow(record: EnrichedPQRSRecord): Record<string, any> {
+  const row: Record<string, any> = {};
+
+  // 1. Maintain all original columns exactly as uploaded, filtering out any previous analysis duplicates
+  if (record.columnas_adicionales && Object.keys(record.columnas_adicionales).length > 0) {
+    for (const [key, val] of Object.entries(record.columnas_adicionales)) {
+      const normalizedKey = key.trim();
+      if (!LEGACY_ANALYSIS_KEYS.has(normalizedKey)) {
+        row[key] = val;
+      }
+    }
+  } else {
+    row['NO_SS'] = record.numero_expediente;
+    row['SUBMOTIVO'] = record.resumen_original || '';
+    row['DESC_DETALLADA'] = record.descripcion_original || '';
+  }
+
+  // Ensure NO_SS is present
+  const hasNoSs = Object.keys(row).some(k => k.trim().toUpperCase() === 'NO_SS' || k.trim().toUpperCase() === 'NO SS' || k.trim().toUpperCase() === 'EXPEDIENTE');
+  if (!hasNoSs) {
+    row['NO_SS'] = record.numero_expediente;
+  }
+
+  // 2. Extract values for the exact 9 canonical fields
+  const a = record.analisis;
+  const catPrincipal = a?.categoria_principal || a?.categoria || 'Sin procesar';
+  const subcatIa = a?.subcategoria_ia || a?.subcategoria || 'General';
+  const productoDetectado = a?.producto_detectado || a?.producto || 'NO ESPECIFICADO';
+  const problemaPrincipal = a?.problema_principal || a?.solicitud_cliente || a?.que_solicita_exactamente || '';
+  const resumen = a?.resumen_normalizado || a?.resumen_requerimiento || '';
+  const evidencia = a?.evidencia_clasificacion || a?.evidencia_textual || a?.sustento_clasificacion || '';
+  const propuestaRespuesta = a?.propuesta_respuesta || '';
+  const nivelConfianza = normalizeNivelConfianza(a);
+  const requiereRevision = normalizeRequiereRevision(a);
+
+  // 3. Append strictly the 9 canonical columns in exact requested order:
+  // 1. CATEGORIA PRINCIPAL
+  // 2. SUBCATEGORIA IA
+  // 3. PRODUCTO DETECTADO
+  // 4. PROBLEMA PRINCIPAL
+  // 5. RESUMEN
+  // 6. EVIDENCIA
+  // 7. PROPUESTA DE RESPUESTA
+  // 8. NIVEL DE CONFIANZA
+  // 9. REQUIERE REVISIÓN
+  row['CATEGORIA PRINCIPAL'] = catPrincipal;
+  row['SUBCATEGORIA IA'] = subcatIa;
+  row['PRODUCTO DETECTADO'] = productoDetectado;
+  row['PROBLEMA PRINCIPAL'] = problemaPrincipal;
+  row['RESUMEN'] = resumen;
+  row['EVIDENCIA'] = evidencia;
+  row['PROPUESTA DE RESPUESTA'] = propuestaRespuesta;
+  row['NIVEL DE CONFIANZA'] = nivelConfianza;
+  row['REQUIERE REVISIÓN'] = requiereRevision;
+
+  return row;
+}
+
+/**
  * Generates and downloads the enriched Excel file (PQRS_ANALIZADAS.xlsx)
- * preserving all original columns (NO_SS, SUBMOTIVO, NOMBRE_PRODUCTO, FECHA_RADICACION, FECHA_DE_COMPROMISO, DESC_DETALLADA)
- * and appending the exact master classification results.
+ * with strictly 1 version of the 9 analysis columns, zero duplicate fields,
+ * preserving original uploaded columns.
  */
 export function exportEnrichedExcel(
   records: EnrichedPQRSRecord[],
@@ -52,77 +218,38 @@ export function exportEnrichedExcel(
   filterRevisionOnly = false
 ): void {
   const filteredRecords = filterRevisionOnly
-    ? records.filter(r => r.analisis?.requiere_revision || r.analisis?.requiere_revision_humana === 'SI' || r.analisis?.categoria === 'REVISIÓN HUMANA')
+    ? records.filter(r => normalizeRequiereRevision(r.analisis) === 'SI')
     : records;
 
-  const exportRows = filteredRecords.map(r => {
-    const row: Record<string, any> = {};
+  const exportRows = filteredRecords.map(r => buildExportRow(r));
 
-    // 1. Maintain all original columns exactly as uploaded
-    if (r.columnas_adicionales && Object.keys(r.columnas_adicionales).length > 0) {
-      for (const [key, val] of Object.entries(r.columnas_adicionales)) {
-        row[key] = val;
-      }
-    } else {
-      row['NO_SS'] = r.numero_expediente;
-      row['SUBMOTIVO'] = r.resumen_original;
-      row['DESC_DETALLADA'] = r.descripcion_original;
-    }
+  // Determine headers ordering: all original headers followed by canonical 9 analysis columns
+  const headerKeys: string[] = [];
+  if (exportRows.length > 0) {
+    const firstRowKeys = Object.keys(exportRows[0]);
+    const originalKeys = firstRowKeys.filter(k => !(CANONICAL_ANALYSIS_COLUMNS as readonly string[]).includes(k));
+    headerKeys.push(...originalKeys, ...CANONICAL_ANALYSIS_COLUMNS);
+  }
 
-    // Ensure NO_SS is present
-    if (!('NO_SS' in row) && !('no_ss' in row)) {
-      row['NO_SS'] = r.numero_expediente;
-    }
+  const worksheet = XLSX.utils.json_to_sheet(exportRows, { header: headerKeys });
 
-    // 2. Append required master columns and extracted payment details
-    const a = r.analisis;
-    const catPrincipal = a?.categoria_principal || a?.categoria || 'Sin procesar';
-    const subcat = a?.subcategoria || 'General';
-    const resumenReq = a?.resumen_requerimiento || a?.resumen_normalizado || '';
-    const conf = a?.confianza !== undefined ? a.confianza : 90;
-    const nivelConfianza = a?.nivel_confianza || (conf >= 85 ? 'Alta' : conf >= 70 ? 'Media' : 'Baja');
-    const reqRev = a?.requiere_revision_humana === 'SI' || a?.requiere_revision || catPrincipal === 'REVISIÓN HUMANA' ? 'SI' : 'NO';
+  // Auto-fit column widths for excellent readability
+  if (headerKeys.length > 0) {
+    worksheet['!cols'] = headerKeys.map(k => {
+      if (k === 'CATEGORIA PRINCIPAL') return { wch: 26 };
+      if (k === 'SUBCATEGORIA IA') return { wch: 28 };
+      if (k === 'PRODUCTO DETECTADO') return { wch: 24 };
+      if (k === 'PROBLEMA PRINCIPAL') return { wch: 35 };
+      if (k === 'RESUMEN') return { wch: 35 };
+      if (k === 'EVIDENCIA') return { wch: 40 };
+      if (k === 'PROPUESTA DE RESPUESTA') return { wch: 45 };
+      if (k === 'NIVEL DE CONFIANZA') return { wch: 18 };
+      if (k === 'REQUIERE REVISIÓN') return { wch: 18 };
+      if (k.toUpperCase().includes('DESC')) return { wch: 45 };
+      return { wch: 20 };
+    });
+  }
 
-    // Exact 5 agent outputs specified by business rules
-    row['CATEGORÍA'] = catPrincipal;
-    row['SUBCATEGORÍA'] = a?.subcategoria_ia || subcat;
-    row['PRODUCTO'] = a?.producto_detectado || a?.producto || 'NO ESPECIFICADO';
-    row['QUÉ QUIERE EL CLIENTE'] = a?.solicitud_cliente || a?.que_solicita_exactamente || '';
-    row['RESUMEN EJECUTIVO'] = a?.resumen_normalizado || resumenReq;
-
-    // Standard master columns
-    row['CATEGORÍA PRINCIPAL'] = catPrincipal;
-    row['SUBCATEGORÍA IA'] = a?.subcategoria_ia || subcat;
-    row['PRODUCTO DETECTADO'] = a?.producto_detectado || a?.producto || 'NO ESPECIFICADO';
-    row['PROBLEMA PRINCIPAL'] = a?.problema_principal || '';
-    row['SOLICITUD DEL CLIENTE'] = a?.solicitud_cliente || a?.que_solicita_exactamente || '';
-    row['RESUMEN NORMALIZADO'] = a?.resumen_normalizado || resumenReq;
-    row['EVIDENCIA DE CLASIFICACIÓN'] = a?.evidencia_clasificacion || a?.evidencia_textual || '';
-    row['NIVEL DE CONFIANZA'] = nivelConfianza;
-    row['REQUIERE REVISIÓN'] = reqRev;
-
-    // Additional standard fields for auditability & backwards compatibility
-    row['CATEGORIA'] = catPrincipal;
-    row['CATEGORIA_PRINCIPAL'] = catPrincipal;
-    row['SUBCATEGORIA'] = subcat;
-    row['CATEGORIA_IA'] = a?.categoria_ia || catPrincipal;
-    row['SUBCATEGORIA_IA'] = a?.subcategoria_ia || subcat;
-    row['PRODUCTO_DETECTADO'] = a?.producto_detectado || a?.producto || 'NO ESPECIFICADO';
-    row['PROBLEMA_PRINCIPAL'] = a?.problema_principal || '';
-    row['SOLICITUD_CLIENTE'] = a?.solicitud_cliente || '';
-    row['RESUMEN_NORMALIZADO'] = a?.resumen_normalizado || resumenReq;
-    row['EVIDENCIA_CLASIFICACION'] = a?.evidencia_clasificacion || a?.evidencia_textual || '';
-    row['NIVEL_CONFIANZA'] = nivelConfianza;
-    row['REQUIERE_REVISION'] = reqRev;
-    row['POSIBLE_INCONSISTENCIA'] = a?.posible_inconsistencia || a?.existe_inconsistencia === 'SI' ? 'SI' : 'NO';
-    if (reqRev === 'SI' && a?.motivo_de_revision) {
-      row['MOTIVO_DE_REVISION'] = a.motivo_de_revision;
-    }
-
-    return row;
-  });
-
-  const worksheet = XLSX.utils.json_to_sheet(exportRows);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'PQRS Analizadas');
 
@@ -130,51 +257,13 @@ export function exportEnrichedExcel(
 }
 
 /**
- * Generates and downloads the dedicated Excel file for Itaú Payments with extracted payment details.
+ * Unified with exportEnrichedExcel. Directs legacy calls to the single source of truth.
  */
 export function exportItauPaymentsExcel(
   records: EnrichedPQRSRecord[],
-  filename = 'PQRS_ITAU_PAGOS_EXTRAIDOS.xlsx'
+  filename = 'PQRS_ANALIZADAS.xlsx'
 ): void {
-  const exportRows = records.map(r => {
-    const row: Record<string, any> = {};
-
-    // 1. Maintain all original columns exactly as uploaded
-    if (r.columnas_adicionales && Object.keys(r.columnas_adicionales).length > 0) {
-      for (const [key, val] of Object.entries(r.columnas_adicionales)) {
-        row[key] = val;
-      }
-    } else {
-      row['NO_SS'] = r.numero_expediente;
-      row['TIPO ORIGEN'] = r.columnas_adicionales?.['TIPO ORIGEN'] || 'ITAU';
-      row['SUBMOTIVO'] = r.resumen_original;
-      row['DESC_DETALLADA'] = r.descripcion_original;
-    }
-
-    if (!('NO_SS' in row) && !('no_ss' in row)) {
-      row['NO_SS'] = r.numero_expediente;
-    }
-
-    const a = r.analisis;
-    const cat = a?.categoria_principal || a?.categoria || 'Sin procesar';
-
-    row['CATEGORIA'] = cat;
-    row['FECHA DEL PAGO'] = a?.fecha_pago || '';
-    row['VALOR DEL PAGO'] = a?.valor_pago || '';
-
-    // Multiple payments columns if present
-    if (a?.pagos_detectados && a.pagos_detectados.length > 1) {
-      row['FECHA DEL PAGO 2'] = a.pagos_detectados[1]?.fecha || '';
-      row['VALOR DEL PAGO 2'] = a.pagos_detectados[1]?.valor || '';
-    }
-
-    return row;
-  });
-
-  const worksheet = XLSX.utils.json_to_sheet(exportRows);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Base Original + Pagos Itaú');
-  XLSX.writeFile(workbook, filename);
+  exportEnrichedExcel(records, filename);
 }
 
 /**

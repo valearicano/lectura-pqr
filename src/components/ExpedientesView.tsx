@@ -624,6 +624,22 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                       "{activeRecord.analisis.sustento_clasificacion || activeRecord.analisis.justificacion}"
                     </p>
                   </div>
+
+                  {activeRecord.analisis.propuesta_respuesta && (
+                    <div className="p-3.5 rounded-lg bg-blue-50 border border-blue-200 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-blue-900 block text-xs uppercase tracking-wide">
+                          Propuesta de Respuesta Sugerida:
+                        </span>
+                        <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">
+                          Canal Oficial
+                        </span>
+                      </div>
+                      <p className="text-slate-800 text-xs leading-relaxed whitespace-pre-wrap">
+                        {activeRecord.analisis.propuesta_respuesta}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Inconsistencias y Revisión Humana */}

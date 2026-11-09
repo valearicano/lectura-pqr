@@ -120,6 +120,7 @@ export interface PQRSAnalysis {
   producto_detectado?: string;
   categoria_ia?: string;
   subcategoria_ia?: string;
+  propuesta_respuesta?: string;
 
   // Extraction of payment dates and values (ITAU)
   fecha_pago?: string;
