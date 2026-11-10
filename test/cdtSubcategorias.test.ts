@@ -397,6 +397,153 @@ export const CDT_TEST_SUITE: CDTTestCase[] = [
     requiereRevisionEsperada: false,
     productoEsperado: 'CDT',
     verificar: (a) => a.categoria_principal === 'CDT' && !a.requiere_revision
+  },
+
+  // ---------------------------------------------------------------------------
+  // CASOS OBLIGATORIOS REQUERIMIENTO VISUALIZACIÓN vs OTRAS SUBCATEGORÍAS
+  // ---------------------------------------------------------------------------
+  {
+    id: 30,
+    nombre: 'Ejemplo obligatorio 1: No puedo visualizar mi CDT',
+    expediente: 'CDT-030',
+    descripcion: 'No puedo visualizar mi CDT',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'VISUALIZACIÓN',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'VISUALIZACIÓN'
+  },
+  {
+    id: 31,
+    nombre: 'Ejemplo obligatorio 2: Mi CDT no aparece en la plataforma',
+    expediente: 'CDT-031',
+    descripcion: 'Mi CDT no aparece en la plataforma',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'VISUALIZACIÓN',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'VISUALIZACIÓN'
+  },
+  {
+    id: 32,
+    nombre: 'Ejemplo obligatorio 3: No puedo ver el saldo de mi CDT en el aplicativo (Saldo no desplaza Visualización)',
+    expediente: 'CDT-032',
+    descripcion: 'No puedo ver el saldo de mi CDT en el aplicativo',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'VISUALIZACIÓN',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'VISUALIZACIÓN'
+  },
+  {
+    id: 33,
+    nombre: 'Ejemplo obligatorio 4: Solicito certificado de saldo de mi CDT',
+    expediente: 'CDT-033',
+    descripcion: 'Solicito certificado de saldo de mi CDT',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'CERTIFICADO DE SALDO O DECEVAL',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'CERTIFICADO DE SALDO O DECEVAL'
+  },
+  {
+    id: 34,
+    nombre: 'Ejemplo obligatorio 5: Solicito certificado de constitución del CDT',
+    expediente: 'CDT-034',
+    descripcion: 'Solicito certificado de constitución del CDT',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'CERTIFICADO DE SALDO O DECEVAL',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'CERTIFICADO DE SALDO O DECEVAL'
+  },
+  {
+    id: 35,
+    nombre: 'Ejemplo obligatorio 6: Necesito certificado tributario de mi CDT',
+    expediente: 'CDT-035',
+    descripcion: 'Necesito certificado tributario de mi CDT',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'CERTIFICADOS TRIBUTARIOS',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'CERTIFICADOS TRIBUTARIOS'
+  },
+  {
+    id: 36,
+    nombre: 'Ejemplo obligatorio 7: La DIAN reporta información incorrecta de mi CDT',
+    expediente: 'CDT-036',
+    descripcion: 'La DIAN reporta información incorrecta de mi CDT',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'CERTIFICADOS TRIBUTARIOS',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'CERTIFICADOS TRIBUTARIOS'
+  },
+  {
+    id: 37,
+    nombre: 'Expresión equivalente: No puedo visualizar el CDT',
+    expediente: 'CDT-037',
+    descripcion: 'No puedo visualizar el CDT en el sistema.',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'VISUALIZACIÓN',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'VISUALIZACIÓN'
+  },
+  {
+    id: 38,
+    nombre: 'Expresión equivalente: No me aparece el CDT',
+    expediente: 'CDT-038',
+    descripcion: 'No me aparece el CDT al ingresar a la banca en línea.',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'VISUALIZACIÓN',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'VISUALIZACIÓN'
+  },
+  {
+    id: 39,
+    nombre: 'Expresión equivalente: No se visualiza el producto',
+    expediente: 'CDT-039',
+    descripcion: 'Tengo un CDT constituido y no se visualiza el producto en mi perfil.',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'VISUALIZACIÓN',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'VISUALIZACIÓN'
+  },
+  {
+    id: 40,
+    nombre: 'Expresión equivalente: Problemas para visualizar el CDT',
+    expediente: 'CDT-040',
+    descripcion: 'Presento problemas para visualizar el CDT en la sucursal virtual.',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'VISUALIZACIÓN',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'VISUALIZACIÓN'
+  },
+  {
+    id: 41,
+    nombre: 'Expresión equivalente: No aparece la información del CDT en los canales',
+    expediente: 'CDT-041',
+    descripcion: 'No aparece la información del CDT en los canales electrónicos de la entidad.',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'VISUALIZACIÓN',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'VISUALIZACIÓN'
+  },
+  {
+    id: 42,
+    nombre: 'Expresión equivalente: No puedo consultar o ver mi CDT en la plataforma',
+    expediente: 'CDT-042',
+    descripcion: 'No puedo consultar o ver mi CDT en la plataforma digital del banco.',
+    categoriaEsperada: 'CDT',
+    subcategoriaEsperada: 'VISUALIZACIÓN',
+    requiereRevisionEsperada: false,
+    productoEsperado: 'CDT',
+    verificar: (a) => a.categoria_principal === 'CDT' && a.subcategoria === 'VISUALIZACIÓN'
   }
 ];
 

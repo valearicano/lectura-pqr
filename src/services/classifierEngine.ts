@@ -502,6 +502,22 @@ export function normalizeCategoryName(raw: string): { categoria_principal: strin
     clean.includes('INVERSION CDT') ||
     clean.includes('DECEVAL')
   ) {
+    // 1. VISUALIZACIÓN has top priority
+    if (
+      clean.includes('VISUALIZ') ||
+      clean.includes('NO PUEDO VER') ||
+      clean.includes('NO VEO') ||
+      clean.includes('NO APARECE') ||
+      clean.includes('DESAPARECI') ||
+      clean.includes('NO MUESTRA') ||
+      clean.includes('NO ENCUENTRO') ||
+      clean.includes('CANALES DIGITALES') ||
+      clean.includes('PORTAL') ||
+      clean.includes('APP') ||
+      clean.includes('APLICATIV')
+    ) {
+      return { categoria_principal: 'CDT', subcategoria: 'VISUALIZACIÓN' };
+    }
     if (clean.includes('TRIBUTARI') || clean.includes('RENTA') || clean.includes('FISCAL') || clean.includes('RETEFUENTE') || clean.includes('EXOGENA') || clean.includes('DIAN')) {
       return { categoria_principal: 'CDT', subcategoria: 'CERTIFICADOS TRIBUTARIOS' };
     }
@@ -523,9 +539,6 @@ export function normalizeCategoryName(raw: string): { categoria_principal: strin
     }
     if (clean.includes('APERTUR') || clean.includes('CONSTITUC') || clean.includes('FORMALIZAC') || clean.includes('CREAC')) {
       return { categoria_principal: 'CDT', subcategoria: 'APERTURA' };
-    }
-    if (clean.includes('VISUALIZ') || clean.includes('APP') || clean.includes('DESAPARECI') || clean.includes('CANALES DIGITALES') || clean.includes('PORTAL')) {
-      return { categoria_principal: 'CDT', subcategoria: 'VISUALIZACIÓN' };
     }
     if (clean.includes('ANTICIPAD') || clean.includes('CANCELACION') || clean.includes('CANCELAR') || clean.includes('RETIRAR ANTES') || clean.includes('PENALIDAD')) {
       return { categoria_principal: 'CDT', subcategoria: 'CANCELACIÓN' };
@@ -1003,29 +1016,154 @@ export function detectCDT(
       (full.includes('consigna') || full.includes('transf') || full.includes('recurso') || full.includes('capital') || full.includes('dinero') || full.includes('plata') || full.includes('pago')));
 
   // -------------------------------------------------------------------------
-  // 6. CERTIFICADOS TRIBUTARIOS
-  // Regla obligatoria: Si el cliente solicita un documento para fines tributarios,
-  // fiscales o de declaración de renta, utiliza CERTIFICADOS TRIBUTARIOS y no CERTIFICADO DE SALDO O DECEVAL.
+  // 1. VISUALIZACIÓN (REGLA PRIORITARIA OBLIGATORIA)
+  // Cuando la descripción del expediente contenga la palabra VISUALIZACIÓN, o expresiones equivalentes:
+  // - No puedo visualizar el CDT.
+  // - No me aparece el CDT.
+  // - No puedo ver mi CDT.
+  // - No se visualiza el producto.
+  // - Problemas para visualizar el CDT.
+  // - No aparece la información del CDT en los canales.
+  // - No puedo consultar o ver mi CDT en la plataforma.
+  // - No puedo ver el saldo de mi CDT en el aplicativo.
+  // La subcategoría debe ser obligatoriamente: CDT → VISUALIZACIÓN.
+  // Esta regla tiene prioridad sobre la clasificación de CERTIFICADO DE SALDO O DECEVAL.
+  // La presencia de las palabras saldo, información, consulta o certificado no debe cambiar
+  // automáticamente una clasificación de VISUALIZACIÓN cuando el problema descrito es que el cliente no puede ver su CDT.
+  // -------------------------------------------------------------------------
+  const isCancelledPayoutDispute = mentionsCancellationOrMaturity && mentionsUnpaidMoney;
+
+  const isVisualizacionCDT =
+    !isCancelledPayoutDispute && (
+      full.includes('visualiz') ||
+      full.includes('no puedo ver') ||
+      full.includes('no logro ver') ||
+      full.includes('no consigo ver') ||
+      full.includes('no lo puedo ver') ||
+      full.includes('no me deja ver') ||
+      full.includes('no permite ver') ||
+      full.includes('no veo mi cdt') ||
+      full.includes('no veo el cdt') ||
+      full.includes('no veo el saldo') ||
+      full.includes('no veo los rendimientos') ||
+      full.includes('no visualizo') ||
+      full.includes('no se visualiza') ||
+      full.includes('sin visualizar') ||
+      full.includes('problemas para visualizar') ||
+      full.includes('problema para visualizar') ||
+      full.includes('inconvenientes para visualizar') ||
+      full.includes('inconveniente para visualizar') ||
+      full.includes('dificultad para visualizar') ||
+      full.includes('falla al visualizar') ||
+      full.includes('error al visualizar') ||
+      full.includes('no me aparece') ||
+      full.includes('no le aparece') ||
+      full.includes('no aparece') ||
+      full.includes('no aparece el cdt') ||
+      full.includes('no aparece mi cdt') ||
+      full.includes('no aparece la informacion') ||
+      full.includes('no me muestra') ||
+      full.includes('no muestra mi cdt') ||
+      full.includes('no muestra el cdt') ||
+      full.includes('no se ve') ||
+      full.includes('no se refleja en la app') ||
+      full.includes('no se refleja en el aplicativo') ||
+      full.includes('no se refleja en los canales') ||
+      full.includes('no lo veo reflejado') ||
+      full.includes('desaparecio de mis productos') ||
+      full.includes('desaparecio de la app') ||
+      full.includes('desaparecio del aplicativo') ||
+      full.includes('desaparecio de la plataforma') ||
+      full.includes('desaparecio del portal') ||
+      full.includes('desaparecio') ||
+      full.includes('no encuentro mi cdt') ||
+      full.includes('no encuentro el cdt') ||
+      full.includes('no figura en la app') ||
+      full.includes('no figura en el aplicativo') ||
+      full.includes('no figura en la plataforma') ||
+      full.includes('no figura en el portal') ||
+      full.includes('no figura') ||
+      full.includes('no puedo consultar o ver') ||
+      full.includes('no puedo ver o consultar') ||
+      full.includes('inconvenientes para consultar') ||
+      full.includes('inconveniente para consultar') ||
+      full.includes('problemas para ver') ||
+      full.includes('problema para ver') ||
+      full.includes('problemas para consultar') ||
+      full.includes('problema para consultar') ||
+      full.includes('error al consultar') ||
+      full.includes('no puedo consultar mi cdt') ||
+      full.includes('no puedo consultar el cdt') ||
+      full.includes('no permite consultar') ||
+      full.includes('no deja consultar') ||
+      full.includes('no carga el cdt') ||
+      full.includes('no carga mi cdt') ||
+      full.includes('no puedo ver el saldo') ||
+      full.includes('no puedo ver mi certificado en la app') ||
+      full.includes('no puedo ver mi certificado en la plataforma') ||
+      (
+        (full.includes('canales') || full.includes('canal') || full.includes('plataforma') || full.includes('aplicativo') || full.includes('aplicacion') || full.includes('app') || full.includes('portal') || full.includes('banca virtual') || full.includes('sucursal virtual') || full.includes('web') || full.includes('banca movil')) &&
+        (full.includes('ver') || full.includes('consultar') || full.includes('aparece') || full.includes('carga') || full.includes('muestra') || full.includes('encuentro') || full.includes('figura')) &&
+        !full.includes('solicito certificado') && !full.includes('necesito certificado') && !full.includes('expedir certificado') && !full.includes('solicitud de certificado') && !full.includes('envio de certificado') && !full.includes('enviar certificado')
+      )
+    );
+
+  if (isVisualizacionCDT) {
+    const ev = extractEvidence([
+      'no puedo visualizar',
+      'no aparece',
+      'no puedo ver',
+      'no visualizo',
+      'no se visualiza',
+      'visualiz',
+      'desaparecio',
+      'no se ve',
+      'inconvenientes para consultar',
+      'no puedo consultar',
+      'no me muestra',
+      'no puedo ver el saldo',
+      'no encuentro'
+    ]);
+    return {
+      matches: true,
+      subcategoria: 'VISUALIZACIÓN',
+      intencion: 'Problemas para visualizar, consultar o encontrar el CDT o su información en canales digitales, plataforma o aplicativo',
+      problema: 'Inconvenientes para visualizar o consultar la información del CDT en canales digitales, app o plataforma',
+      solicitud: 'Habilitación técnica y corrección en la visualización del CDT en los canales electrónicos',
+      resumen: `Cliente no puede visualizar o consultar la información de su CDT en los canales digitales o aplicación móvil.`,
+      evidencia: ev,
+      producto_detectado: 'CDT',
+      requiere_revision: false
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // 2. CERTIFICADOS TRIBUTARIOS
+  // Solicitudes de certificados tributarios, información exógena, retenciones,
+  // información reportada a la DIAN o documentos para declaraciones de impuestos.
+  // Tiene prioridad sobre CERTIFICADO DE SALDO O DECEVAL cuando se solicitan fines fiscales.
   // -------------------------------------------------------------------------
   const isTributario =
-    full.includes('tributari') ||
-    full.includes('retencion en la fuente') ||
-    full.includes('retefuente') ||
-    full.includes('declaracion de renta') ||
-    full.includes('declarar renta') ||
-    full.includes('para la renta') ||
-    full.includes('fines tributarios') ||
-    full.includes('fines fiscales') ||
-    full.includes('soporte tributario') ||
-    full.includes('soportes tributarios') ||
-    full.includes('certificado fiscal') ||
-    full.includes('certificados fiscales') ||
-    full.includes('dian') ||
-    full.includes('informacion exogena') ||
-    full.includes('exogena') ||
-    full.includes('certificado de retencion') ||
-    full.includes('retencion aplicada') ||
-    (full.includes('impuesto') && (full.includes('certificado') || full.includes('soporte') || full.includes('constancia')));
+    !isVisualizacionCDT && (
+      full.includes('tributari') ||
+      full.includes('retencion en la fuente') ||
+      full.includes('retefuente') ||
+      full.includes('declaracion de renta') ||
+      full.includes('declarar renta') ||
+      full.includes('para la renta') ||
+      full.includes('fines tributarios') ||
+      full.includes('fines fiscales') ||
+      full.includes('soporte tributario') ||
+      full.includes('soportes tributarios') ||
+      full.includes('certificado fiscal') ||
+      full.includes('certificados fiscales') ||
+      full.includes('dian') ||
+      full.includes('informacion exogena') ||
+      full.includes('exogena') ||
+      full.includes('certificado de retencion') ||
+      full.includes('retencion aplicada') ||
+      (full.includes('impuesto') && (full.includes('certificado') || full.includes('soporte') || full.includes('constancia')))
+    );
 
   if (isTributario) {
     const ev = extractEvidence([
@@ -1051,42 +1189,56 @@ export function detectCDT(
   }
 
   // -------------------------------------------------------------------------
-  // 5. CERTIFICADO DE SALDO O DECEVAL
-  // Reemplaza la anterior CERTIFICADOS Y SOPORTES.
-  // Certificado de saldo, valores iniciales, constitución, saldo a fecha, o constancias Deceval.
+  // 3. CERTIFICADO DE SALDO O DECEVAL
+  // Solicitudes de certificados de constitución, saldo del CDT a una fecha determinada,
+  // información de saldo o documentos relacionados con DECEVAL, siempre que el problema
+  // principal sea obtener el certificado o soporte documental.
   // -------------------------------------------------------------------------
   const isCertificadoSaldoDeceval =
-    full.includes('deceval') ||
-    full.includes('certificado de saldo') ||
-    full.includes('certificado del saldo') ||
-    full.includes('certificacion de saldo') ||
-    full.includes('valores iniciales') ||
-    full.includes('valor inicial') ||
-    full.includes('saldo a fecha') ||
-    full.includes('saldo a una fecha') ||
-    full.includes('saldo a corte') ||
-    full.includes('valores historicos') ||
-    full.includes('valores actuales') ||
-    full.includes('constancia deceval') ||
-    full.includes('soporte deceval') ||
-    full.includes('macrotitulo') ||
-    full.includes('certificado de titularidad') ||
-    full.includes('certificacion de titularidad') ||
-    full.includes('constancia de inversion') ||
-    full.includes('valores registrados') ||
-    full.includes('cdt fisico') ||
-    full.includes('titulo fisico') ||
-    full.includes('papeleta de cdt') ||
-    full.includes('copia del cdt') ||
-    full.includes('extracto de mi cdt') ||
-    full.includes('extracto del cdt') ||
-    full.includes('estado de cuenta de mi cdt') ||
-    full.includes('estado de mi cdt') ||
-    full.includes('constancia del cdt') ||
-    full.includes('soporte de mi cdt') ||
-    full.includes('soporte del cdt') ||
-    ((full.includes('certificado') || full.includes('certificacion') || full.includes('constancia') || full.includes('soporte')) &&
-      (full.includes('saldo') || full.includes('constitucion') || full.includes('titularidad') || full.includes('monto') || full.includes('inversion') || full.includes('deposito')));
+    !isVisualizacionCDT && !isTributario && (
+      full.includes('deceval') ||
+      full.includes('constancia deceval') ||
+      full.includes('soporte deceval') ||
+      full.includes('certificado de saldo') ||
+      full.includes('certificado del saldo') ||
+      full.includes('certificacion de saldo') ||
+      full.includes('certificado de constitucion') ||
+      full.includes('certificacion de constitucion') ||
+      full.includes('constancia de constitucion') ||
+      full.includes('soporte de constitucion') ||
+      full.includes('valores iniciales') ||
+      full.includes('valor inicial') ||
+      full.includes('saldo a fecha') ||
+      full.includes('saldo a una fecha') ||
+      full.includes('saldo a corte') ||
+      full.includes('valores historicos') ||
+      full.includes('valores actuales') ||
+      full.includes('macrotitulo') ||
+      full.includes('certificado de titularidad') ||
+      full.includes('certificacion de titularidad') ||
+      full.includes('constancia de inversion') ||
+      full.includes('valores registrados') ||
+      full.includes('cdt fisico') ||
+      full.includes('titulo fisico') ||
+      full.includes('papeleta de cdt') ||
+      full.includes('copia del cdt') ||
+      full.includes('extracto de mi cdt') ||
+      full.includes('extracto del cdt') ||
+      full.includes('estado de cuenta de mi cdt') ||
+      full.includes('constancia del cdt') ||
+      full.includes('soporte de mi cdt') ||
+      full.includes('soporte del cdt') ||
+      (
+        (full.includes('solicito certificado') || full.includes('solicito una certificacion') || full.includes('solicitud de certificado') || full.includes('necesito certificado') || full.includes('requiero certificado') || full.includes('expedir certificado') || full.includes('generar certificado') || full.includes('copia de certificado')) &&
+        (full.includes('saldo') || full.includes('constitucion') || full.includes('cdt') || full.includes('titulo') || full.includes('inversion')) &&
+        !full.includes('tributari') && !full.includes('renta') && !full.includes('dian') && !full.includes('fiscal')
+      ) ||
+      (
+        (full.includes('certificado') || full.includes('certificacion') || full.includes('constancia') || full.includes('soporte')) &&
+        (full.includes('saldo') || full.includes('constitucion') || full.includes('titularidad') || full.includes('monto') || full.includes('inversion') || full.includes('deposito')) &&
+        !full.includes('tributari') && !full.includes('renta') && !full.includes('dian') && !full.includes('fiscal')
+      )
+    );
 
   if (isCertificadoSaldoDeceval) {
     const ev = extractEvidence([
@@ -1349,50 +1501,6 @@ export function detectCDT(
       problema: 'Inconvenientes, demora o fallas en la apertura, constitución o formalización del CDT',
       solicitud: 'Constitución formal, confirmación y activación del CDT solicitado',
       resumen: `Cliente reporta inconvenientes o solicita la formalización y apertura de su CDT.`,
-      evidencia: ev,
-      producto_detectado: 'CDT',
-      requiere_revision: false
-    };
-  }
-
-  // -------------------------------------------------------------------------
-  // 8. VISUALIZACIÓN
-  // Inconvenientes para visualizar el CDT en canales digitales, app o banca virtual.
-  // -------------------------------------------------------------------------
-  const isVisualizacionCDT =
-    full.includes('no puedo ver') ||
-    full.includes('no visualizo') ||
-    full.includes('no aparece') ||
-    full.includes('no se ve') ||
-    full.includes('desaparecio') ||
-    full.includes('no encuentro') ||
-    full.includes('no me muestra') ||
-    full.includes('no figura') ||
-    full.includes('inconvenientes para consultar') ||
-    full.includes('problemas para ver') ||
-    full.includes('error al consultar') ||
-    full.includes('no carga el cdt') ||
-    full.includes('no carga') ||
-    ((full.includes('visualiz') || full.includes('canales digitales') || full.includes('banca virtual') || full.includes('app') || full.includes('aplicacion') || full.includes('portal')) &&
-      (full.includes('ver') || full.includes('consultar') || full.includes('aparece') || full.includes('carga')));
-
-  if (isVisualizacionCDT) {
-    const ev = extractEvidence([
-      'no aparece',
-      'no puedo ver',
-      'no visualizo',
-      'desaparecio',
-      'no se ve',
-      'inconvenientes para consultar',
-      'visualiz'
-    ]);
-    return {
-      matches: true,
-      subcategoria: 'VISUALIZACIÓN',
-      intencion: 'Problemas para visualizar o consultar CDT en canales digitales o app',
-      problema: 'Inconvenientes para visualizar o consultar la información del CDT en canales digitales o app',
-      solicitud: 'Habilitación técnica y corrección en la visualización del CDT en los canales electrónicos',
-      resumen: `Cliente no puede visualizar o consultar la información de su CDT en los canales digitales o aplicación móvil.`,
       evidencia: ev,
       producto_detectado: 'CDT',
       requiere_revision: false
@@ -4362,6 +4470,63 @@ export function validateClassificationConsistency(
         motivo_inconsistencia: 'Se corrigió categorización: la mención de cuenta o producto no constituye evidencia explícita de CDT.'
       };
     }
+
+    // Regla prioritaria: Inconvenientes de visualización en CDT prevalecen sobre CERTIFICADO DE SALDO O DECEVAL
+    const isVisClaim =
+      lower.includes('visualiz') ||
+      lower.includes('no puedo ver') ||
+      lower.includes('no logro ver') ||
+      lower.includes('no consigo ver') ||
+      lower.includes('no lo puedo ver') ||
+      lower.includes('no me deja ver') ||
+      lower.includes('no permite ver') ||
+      lower.includes('no veo mi cdt') ||
+      lower.includes('no veo el cdt') ||
+      lower.includes('no veo el saldo') ||
+      lower.includes('no visualizo') ||
+      lower.includes('no se visualiza') ||
+      lower.includes('problemas para visualizar') ||
+      lower.includes('inconvenientes para visualizar') ||
+      lower.includes('dificultad para visualizar') ||
+      lower.includes('falla al visualizar') ||
+      lower.includes('error al visualizar') ||
+      lower.includes('no me aparece') ||
+      lower.includes('no le aparece') ||
+      lower.includes('no aparece') ||
+      lower.includes('no me muestra') ||
+      lower.includes('no se ve') ||
+      lower.includes('no se refleja en la app') ||
+      lower.includes('no se refleja en el aplicativo') ||
+      lower.includes('desaparecio') ||
+      lower.includes('no encuentro mi cdt') ||
+      lower.includes('no encuentro el cdt') ||
+      lower.includes('no figura') ||
+      lower.includes('no puedo consultar o ver') ||
+      lower.includes('no puedo ver o consultar') ||
+      lower.includes('inconvenientes para consultar') ||
+      lower.includes('problemas para ver') ||
+      lower.includes('problemas para consultar') ||
+      lower.includes('no puedo consultar mi cdt') ||
+      lower.includes('no carga el cdt') ||
+      lower.includes('no puedo ver el saldo');
+
+    const isCancelledPayoutDispute =
+      (lower.includes('cancele') || lower.includes('cancelado') || lower.includes('vencio') || lower.includes('vencido') || lower.includes('liquidado')) &&
+      (lower.includes('no me han entregado el dinero') || lower.includes('no recibi') || lower.includes('no han pagado') || lower.includes('no han abonado'));
+
+    if (isVisClaim && !isCancelledPayoutDispute && activeResult.subcategoria !== 'VISUALIZACIÓN') {
+      return {
+        ...activeResult,
+        subcategoria: 'VISUALIZACIÓN',
+        problema_principal: 'Inconvenientes para visualizar o consultar la información del CDT en canales digitales o app',
+        solicitud_cliente: 'Habilitación técnica y corrección en la visualización del CDT en los canales electrónicos',
+        resumen_requerimiento: 'Cliente no puede visualizar o consultar la información de su CDT en canales digitales.',
+        confianza: 98,
+        requiere_revision_humana: false,
+        existe_inconsistencia: 'SI',
+        motivo_inconsistencia: 'Prioridad VISUALIZACIÓN aplicada: el cliente manifiesta problemas para ver, consultar o visualizar su CDT o saldo en aplicativo o canales.'
+      };
+    }
   }
 
   // 3. Contradiction: Fraud manifestation not categorized as FRAUDES (excluding insurance, cuota de manejo, cobranza, credito, and CDT disputes)
@@ -4604,11 +4769,14 @@ export function generatePropuestaRespuesta(
 
   // 3.2 CDT
   if (cat === 'CDT') {
-    if (sub.includes('TRIBUTARI')) {
-      return 'Se atiende su solicitud de documentación fiscal; se propone generar y remitir a sus canales registrados el certificado tributario y de retención en la fuente de su CDT.';
+    if (sub.includes('VISUALIZ')) {
+      return 'Se reconoce la dificultad para visualizar el CDT en canales digitales; se propone remitir el reporte técnico a soporte de canales para habilitar la consulta del producto.';
     }
     if (sub.includes('CERTIFICADO') || sub.includes('SALDO') || sub.includes('DECEVAL')) {
       return 'Se atiende su solicitud de certificación; se propone expedir la constancia de saldo y soporte de custodia Deceval de su CDT y remitirla a sus datos de contacto registrados.';
+    }
+    if (sub.includes('TRIBUTARI')) {
+      return 'Se atiende su solicitud de documentación fiscal; se propone generar y remitir a sus canales registrados el certificado tributario y de retención en la fuente de su CDT.';
     }
     if (sub.includes('RENOVAC')) {
       return 'Se acusa recibo de su inconformidad respecto a la renovación de su CDT; se propone remitir el caso al área de Inversiones para revisar las condiciones pactadas y contactar al cliente con el estado del título.';
@@ -4621,9 +4789,6 @@ export function generatePropuestaRespuesta(
     }
     if (sub.includes('APERTUR')) {
       return 'Se reconoce el inconveniente presentado en la apertura del CDT; se propone verificar el débito y el estado de formalización para culminar el trámite o gestionar la devolución correspondiente.';
-    }
-    if (sub.includes('VISUALIZ')) {
-      return 'Se reconoce la dificultad para visualizar el CDT en canales digitales; se propone remitir el reporte técnico a soporte de canales para habilitar la consulta del producto.';
     }
     return 'Se acusa recibo de su consulta sobre la liquidación de rendimientos del CDT; se propone realizar la revisión del cálculo de intereses pactados frente a los liquidados e informar el detalle.';
   }
