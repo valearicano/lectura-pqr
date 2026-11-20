@@ -104,7 +104,7 @@ export async function saveRecordsToSupabase(records: EnrichedPQRSRecord[]): Prom
           categoria_humana: a.categoria_humana || null,
           subcategoria_humana: a.subcategoria_humana || null,
           resumen_humano: a.resumen_humano || null,
-          modelo_ia: a.modelo_ia || 'gemini-3.8-flash',
+          modelo_ia: a.modelo_ia || 'gemini-4-hydrogen',
           updated_at: new Date().toISOString()
         };
       });

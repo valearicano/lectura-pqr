@@ -90,6 +90,13 @@ export const SAMPLE_PQRS_DATA: {
     submotivo: 'Reclamos varios',
     producto: 'NO IDENTIFICADO',
     descripcion_original: 'Solicito comedidamente que me colaboren revisando mi caso porque no estoy de acuerdo con lo que me dijeron por teléfono.'
+  },
+  {
+    numero_expediente: '2026-000116',
+    resumen_original: 'Felicitación atención',
+    submotivo: 'Servicio al cliente',
+    producto: 'Cuenta de Ahorros',
+    descripcion_original: 'Quiero agradecer y felicitar a la asesora de la oficina principal por la excelente atención, agilidad y claridad al resolver la apertura de mi cuenta de ahorros.'
   }
 ];
 
@@ -112,6 +119,7 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       analisis: {
         numero_expediente: '2026-000101',
         categoria: 'PSE',
+        sentimiento: 'negativo',
         confianza: 95,
         requiere_revision_humana: 'NO',
         requiere_revision: false,
@@ -133,8 +141,8 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
         subcategoria: 'PSE',
         resumen_normalizado: 'PSE: abono por PSE no acreditado en tarjeta de crédito.',
         justificacion: 'Clasificado como PSE según la regla de prioridad (Prioridad 2).',
-        modelo_ia: 'gemini-3.8-flash',
-        version_prompt: 'v3.0.0-16-categorias',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
         fecha_analisis: new Date().toISOString(),
         estado_revision: 'PENDIENTE'
       }
@@ -156,6 +164,7 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       analisis: {
         numero_expediente: '2026-000102',
         categoria: 'PAGOS / ABONOS',
+        sentimiento: 'negativo',
         confianza: 96,
         requiere_revision_humana: 'NO',
         requiere_revision: false,
@@ -176,8 +185,8 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
         subcategoria: 'PAGOS / ABONOS',
         resumen_normalizado: 'PAGOS / ABONOS: pago de cuota en corresponsal bancario no aplicado.',
         justificacion: 'Clasificado como PAGOS / ABONOS conforme a la regla 7.',
-        modelo_ia: 'gemini-3.8-flash',
-        version_prompt: 'v3.0.0-16-categorias',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
         fecha_analisis: new Date().toISOString(),
         estado_revision: 'PENDIENTE'
       }
@@ -199,6 +208,7 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       analisis: {
         numero_expediente: '2026-000103',
         categoria: 'PSE',
+        sentimiento: 'negativo',
         confianza: 98,
         requiere_revision_humana: 'NO',
         requiere_revision: false,
@@ -219,8 +229,8 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
         subcategoria: 'PSE',
         resumen_normalizado: 'PSE: reversión de débito por pago PSE rechazado.',
         justificacion: 'Clasificado como PSE conforme a la regla 2.',
-        modelo_ia: 'gemini-3.8-flash',
-        version_prompt: 'v3.0.0-16-categorias',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
         fecha_analisis: new Date().toISOString(),
         estado_revision: 'PENDIENTE'
       }
@@ -242,6 +252,7 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       analisis: {
         numero_expediente: '2026-000104',
         categoria: 'COBROS / CARGOS',
+        sentimiento: 'negativo',
         confianza: 92,
         requiere_revision_humana: 'NO',
         requiere_revision: false,
@@ -263,8 +274,8 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
         subcategoria: 'COBROS / CARGOS',
         resumen_normalizado: 'COBROS / CARGOS: cobro indebido de intereses de mora.',
         justificacion: 'Clasificado como COBROS / CARGOS conforme a la regla 12.',
-        modelo_ia: 'gemini-3.8-flash',
-        version_prompt: 'v3.0.0-16-categorias',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
         fecha_analisis: new Date().toISOString(),
         estado_revision: 'PENDIENTE'
       }
@@ -286,6 +297,7 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       analisis: {
         numero_expediente: '2026-000105',
         categoria: 'GMF / 4X1000',
+        sentimiento: 'neutro',
         confianza: 98,
         requiere_revision_humana: 'NO',
         requiere_revision: false,
@@ -307,8 +319,8 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
         subcategoria: 'GMF / 4X1000',
         resumen_normalizado: 'GMF / 4X1000: marcación de cuenta exenta y devolución del gravamen.',
         justificacion: 'Clasificado como GMF / 4X1000 conforme a la regla 4.',
-        modelo_ia: 'gemini-3.8-flash',
-        version_prompt: 'v3.0.0-16-categorias',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
         fecha_analisis: new Date().toISOString(),
         estado_revision: 'PENDIENTE'
       }
@@ -330,6 +342,7 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       analisis: {
         numero_expediente: '2026-000106',
         categoria: 'COBROS / CARGOS',
+        sentimiento: 'negativo',
         confianza: 90,
         requiere_revision_humana: 'NO',
         requiere_revision: false,
@@ -351,8 +364,8 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
         subcategoria: 'COBROS / CARGOS',
         resumen_normalizado: 'COBROS / CARGOS: cobro de comisión por cheque devuelto.',
         justificacion: 'Clasificado como COBROS / CARGOS conforme a la regla 12.',
-        modelo_ia: 'gemini-3.8-flash',
-        version_prompt: 'v3.0.0-16-categorias',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
         fecha_analisis: new Date().toISOString(),
         estado_revision: 'PENDIENTE'
       }
@@ -374,6 +387,7 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       analisis: {
         numero_expediente: '2026-000107',
         categoria: 'SEGUROS',
+        sentimiento: 'negativo',
         confianza: 97,
         requiere_revision_humana: 'NO',
         requiere_revision: false,
@@ -394,8 +408,8 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
         subcategoria: 'SEGUROS',
         resumen_normalizado: 'SEGUROS: cancelación y reintegro de seguro no solicitado.',
         justificacion: 'Clasificado como SEGUROS conforme a la regla 3.',
-        modelo_ia: 'gemini-3.8-flash',
-        version_prompt: 'v3.0.0-16-categorias',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
         fecha_analisis: new Date().toISOString(),
         estado_revision: 'PENDIENTE'
       }
@@ -417,6 +431,7 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       analisis: {
         numero_expediente: '2026-000108',
         categoria: 'CUOTA DE MANEJO',
+        sentimiento: 'negativo',
         confianza: 98,
         requiere_revision_humana: 'NO',
         requiere_revision: false,
@@ -438,8 +453,8 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
         subcategoria: 'CUOTA DE MANEJO',
         resumen_normalizado: 'CUOTA DE MANEJO: reclamo por cobro de cuota de manejo con exoneración acordada.',
         justificacion: 'Clasificado como CUOTA DE MANEJO conforme a la regla 1.',
-        modelo_ia: 'gemini-3.8-flash',
-        version_prompt: 'v3.0.0-16-categorias',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
         fecha_analisis: new Date().toISOString(),
         estado_revision: 'PENDIENTE'
       }
@@ -461,6 +476,7 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       analisis: {
         numero_expediente: '2026-000109',
         categoria: 'SERVICIO / ATENCIÓN',
+        sentimiento: 'negativo',
         confianza: 91,
         requiere_revision_humana: 'NO',
         requiere_revision: false,
@@ -481,8 +497,8 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
         subcategoria: 'SERVICIO / ATENCIÓN',
         resumen_normalizado: 'SERVICIO / ATENCIÓN: bloqueo de clave digital en app móvil.',
         justificacion: 'Clasificado como SERVICIO / ATENCIÓN conforme a la regla 14.',
-        modelo_ia: 'gemini-3.8-flash',
-        version_prompt: 'v3.0.0-16-categorias',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
         fecha_analisis: new Date().toISOString(),
         estado_revision: 'PENDIENTE'
       }
@@ -504,6 +520,7 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       analisis: {
         numero_expediente: '2026-000111',
         categoria: 'FRAUDE / TRANSACCIÓN NO RECONOCIDA',
+        sentimiento: 'negativo',
         confianza: 98,
         requiere_revision_humana: 'NO',
         requiere_revision: false,
@@ -525,8 +542,8 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
         subcategoria: 'FRAUDE / TRANSACCIÓN NO RECONOCIDA',
         resumen_normalizado: 'FRAUDE / TRANSACCIÓN NO RECONOCIDA: compra no reconocida de $1.200.000.',
         justificacion: 'Clasificado como FRAUDE / TRANSACCIÓN NO RECONOCIDA por regla de prioridad número 1.',
-        modelo_ia: 'gemini-3.8-flash',
-        version_prompt: 'v3.0.0-16-categorias',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
         fecha_analisis: new Date().toISOString(),
         estado_revision: 'PENDIENTE'
       }
@@ -548,6 +565,7 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       analisis: {
         numero_expediente: '2026-000113',
         categoria: 'DATOS / INFORMACIÓN',
+        sentimiento: 'neutro',
         confianza: 96,
         requiere_revision_humana: 'NO',
         requiere_revision: false,
@@ -568,8 +586,8 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
         subcategoria: 'DATOS / INFORMACIÓN',
         resumen_normalizado: 'DATOS / INFORMACIÓN: solicitud de copias contractuales y extractos.',
         justificacion: 'Clasificado como DATOS / INFORMACIÓN conforme a la regla 13.',
-        modelo_ia: 'gemini-3.8-flash',
-        version_prompt: 'v3.0.0-16-categorias',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
         fecha_analisis: new Date().toISOString(),
         estado_revision: 'PENDIENTE'
       }
@@ -591,6 +609,7 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       analisis: {
         numero_expediente: '2026-000115',
         categoria: 'REVISIÓN HUMANA',
+        sentimiento: 'negativo',
         confianza: 35,
         requiere_revision_humana: 'SI',
         requiere_revision: true,
@@ -612,8 +631,52 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
         subcategoria: 'REVISIÓN HUMANA',
         resumen_normalizado: 'REVISIÓN HUMANA: texto insuficiente para categorizar.',
         justificacion: 'Enviado a REVISIÓN HUMANA según la regla 16.',
-        modelo_ia: 'gemini-3.8-flash',
-        version_prompt: 'v3.0.0-16-categorias',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
+        fecha_analisis: new Date().toISOString(),
+        estado_revision: 'PENDIENTE'
+      }
+    },
+    {
+      id: 'demo-13',
+      numero_expediente: '2026-000116',
+      resumen_original: 'Felicitación atención',
+      descripcion_original: 'Quiero agradecer y felicitar a la asesora de la oficina principal por la excelente atención, agilidad y claridad al resolver la apertura de mi cuenta de ahorros.',
+      descripcion_normalizada: 'quiero agradecer y felicitar a la asesora de la oficina principal por la excelente atencion agilidad y claridad al resolver la apertura de mi cuenta de ahorros',
+      hash_descripcion: 'hash_demo_felicitacion',
+      estado_procesamiento: 'COMPLETADO',
+      grupo_id: 'GRP-007',
+      similitud_grupo: 0.89,
+      columnas_adicionales: {
+        SUBMOTIVO: 'Servicio al cliente',
+        NOMBRE_PRODUCTO: 'Cuenta de Ahorros'
+      },
+      analisis: {
+        numero_expediente: '2026-000116',
+        categoria: 'SERVICIO / ATENCIÓN',
+        sentimiento: 'positivo',
+        confianza: 97,
+        requiere_revision_humana: 'NO',
+        requiere_revision: false,
+        existe_inconsistencia: 'NO',
+        posible_inconsistencia: false,
+        producto: 'Cuenta de Ahorros',
+        tipo_pqr: 'SOLICITUD',
+        motivo: 'SERVICIO / ATENCIÓN',
+        submotivo: 'FELICITACIONES / RECONOCIMIENTO',
+        que_solicita_exactamente: 'Registrar felicitación por la atención recibida en oficina principal.',
+        hechos_principales: 'El cliente destaca la agilidad, claridad y calidad del servicio durante la apertura de su cuenta.',
+        sustento_clasificacion: 'Expresión explícita de agradecimiento y felicitación hacia el equipo de atención.',
+        nivel_confianza: 'Alta',
+        tema_principal: 'SERVICIO / ATENCIÓN',
+        subtema: 'FELICITACIONES / RECONOCIMIENTO',
+        problema_principal: 'Reconocimiento por buena atención en oficina',
+        solicitud_cliente: 'Agradecimiento y felicitación al asesor',
+        subcategoria: 'FELICITACIONES / RECONOCIMIENTO',
+        resumen_normalizado: 'SERVICIO / ATENCIÓN: felicitación por excelente atención en apertura de cuenta.',
+        justificacion: 'Clasificado como SERVICIO / ATENCIÓN con sentimiento positivo.',
+        modelo_ia: 'gemini-4-hydrogen',
+        version_prompt: 'v4.2.0-sentimiento-gemini',
         fecha_analisis: new Date().toISOString(),
         estado_revision: 'PENDIENTE'
       }
@@ -711,15 +774,16 @@ export function getInitialDemoState(): { records: EnrichedPQRSRecord[]; groups: 
       id: 'GRP-007',
       nombre: 'Canales y Servicio de Atención',
       categoria_sugerida: 'SERVICIO / ATENCIÓN',
-      cantidad_expedientes: 1,
-      similitud_promedio: 0.92,
-      similitud_minima: 0.92,
+      cantidad_expedientes: 2,
+      similitud_promedio: 0.91,
+      similitud_minima: 0.89,
       similitud_maxima: 0.92,
       ejemplos_descripciones: [
-        'Bloqueo de contraseña en app móvil.'
+        'Bloqueo de contraseña en app móvil.',
+        'Felicitación por excelente atención en apertura de cuenta.'
       ],
       es_nuevo_patron: false,
-      expedientes_ids: ['2026-000109']
+      expedientes_ids: ['2026-000109', '2026-000116']
     },
     {
       id: 'GRP-008',

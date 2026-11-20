@@ -6,33 +6,33 @@ import { ExpedientesView } from './components/ExpedientesView';
 import { GruposSimilaresView } from './components/GruposSimilaresView';
 import { RevisionHumanaView } from './components/RevisionHumanaView';
 import { CategoriasView } from './components/CategoriasView';
-import { EvaluacionCalidadView } from './components/EvaluacionCalidadView';
-import { TestCasesView } from './components/TestCasesView';
-import { ConfiguracionView } from './components/ConfiguracionView';
 import { getInitialDemoState } from './services/sampleData';
-import { EnrichedPQRSRecord, SemanticGroup } from './types';
+import { inferTipoCasoSFC } from './services/classifierEngine';
+import { EnrichedPQRSRecord, SemanticGroup, SentimientoPQR, TipoCasoSFC } from './types';
+
+function ensureTipoCasoOnRecords(items: EnrichedPQRSRecord[]): EnrichedPQRSRecord[] {
+  return items.map(rec => {
+    if (!rec.analisis || rec.analisis.tipo_caso) return rec;
+    const inferred = inferTipoCasoSFC(rec, rec.analisis);
+    if (!inferred) return rec;
+    return {
+      ...rec,
+      analisis: {
+        ...rec.analisis,
+        tipo_caso: inferred
+      }
+    };
+  });
+}
 
 export default function App() {
   const initial = getInitialDemoState();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
-  const [records, setRecords] = useState<EnrichedPQRSRecord[]>(initial.records);
+  const [records, setRecords] = useState<EnrichedPQRSRecord[]>(() => ensureTipoCasoOnRecords(initial.records));
   const [groups, setGroups] = useState<SemanticGroup[]>(initial.groups);
-  const [supabaseConnected, setSupabaseConnected] = useState<boolean>(false);
+  const [selectedSentimentFilter, setSelectedSentimentFilter] = useState<SentimientoPQR | 'TODOS'>('TODOS');
+  const [selectedTipoCasoFilter, setSelectedTipoCasoFilter] = useState<TipoCasoSFC | 'TODOS'>('TODOS');
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
-
-  // Check Supabase connection on mount
-  React.useEffect(() => {
-    fetch('/api/supabase/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records: [] })
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) setSupabaseConnected(true);
-      })
-      .catch(() => setSupabaseConnected(false));
-  }, []);
 
   const showNotification = (message: string, type: 'success' | 'info' = 'success') => {
     setNotification({ message, type });
@@ -41,7 +41,7 @@ export default function App() {
 
   // Called when UploadView finishes processing a new file or demo batch
   const handleProcessingCompleted = (newRecords: EnrichedPQRSRecord[], newGroups: SemanticGroup[]) => {
-    setRecords(newRecords);
+    setRecords(ensureTipoCasoOnRecords(newRecords));
     setGroups(newGroups);
     showNotification(`¡Procesamiento finalizado! Se cargaron y analizaron ${newRecords.length} expedientes.`);
   };
@@ -68,31 +68,41 @@ export default function App() {
   ).length;
 
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-800 font-sans flex flex-col selection:bg-blue-100 selection:text-blue-900">
+    <div className="min-h-screen bg-[#F5F7FC] text-[#0B1330] font-sans flex flex-col selection:bg-[#2F6BFF]/15 selection:text-[#0B1330]">
       {/* Top Navigation */}
       <Navbar
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
         pendingReviewCount={pendingReviewCount}
         totalRecordsCount={records.length}
-        supabaseConnected={supabaseConnected}
       />
 
       {/* Floating Notification Toast */}
       {notification && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-xs px-4 py-3 rounded-xl shadow-2xl border border-slate-700 flex items-center space-x-2 animate-bounce">
-          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <div
+          role="status"
+          className="fixed bottom-6 right-6 z-50 bg-[#0B1330] text-white text-sm px-4 py-3 rounded-xl shadow-[0_8px_24px_rgba(11,19,48,0.22)] border border-white/10 flex items-center gap-2.5 max-w-md"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" aria-hidden="true" />
           <span>{notification.message}</span>
         </div>
       )}
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {currentTab === 'dashboard' && (
           <DashboardView
             records={records}
             groups={groups}
             onNavigate={(tab) => setCurrentTab(tab)}
+            onSelectSentiment={(sentiment) => {
+              setSelectedSentimentFilter(sentiment);
+              setCurrentTab('expedientes');
+            }}
+            onSelectTipoCaso={(tipoCaso) => {
+              setSelectedTipoCasoFilter(tipoCaso);
+              setCurrentTab('expedientes');
+            }}
           />
         )}
 
@@ -106,6 +116,10 @@ export default function App() {
         {currentTab === 'expedientes' && (
           <ExpedientesView
             records={records}
+            initialSentimentFilter={selectedSentimentFilter}
+            onSentimentFilterChange={setSelectedSentimentFilter}
+            initialTipoCasoFilter={selectedTipoCasoFilter}
+            onTipoCasoFilterChange={setSelectedTipoCasoFilter}
             onUpdateRecord={handleUpdateRecord}
             onNavigateToReview={() => setCurrentTab('revision')}
           />
@@ -130,28 +144,14 @@ export default function App() {
         {currentTab === 'categorias' && (
           <CategoriasView />
         )}
-
-        {currentTab === 'evaluacion' && (
-          <EvaluacionCalidadView
-            records={records}
-          />
-        )}
-
-        {currentTab === 'pruebas' && (
-          <TestCasesView />
-        )}
-
-        {currentTab === 'configuracion' && (
-          <ConfiguracionView />
-        )}
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white/80 py-4 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>Plataforma Inteligente de Lectura, Clasificación y Agrupación de PQRS</span>
-          <span className="text-slate-400 font-mono text-[11px]">
-            Gemini 3.8 Flash • Embeddings Vectoriales 768d • PostgreSQL / Supabase
+      <footer className="border-t border-slate-200/80 bg-white py-4 text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <span className="font-medium text-[#0B1330]">IRIS</span>
+          <span className="text-slate-500 text-center sm:text-right">
+            Inteligencia para el reconocimiento e interpretación de solicitudes
           </span>
         </div>
       </footer>

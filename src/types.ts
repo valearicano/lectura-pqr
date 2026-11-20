@@ -12,7 +12,6 @@ export interface PQRSRecord {
 }
 
 export const CATEGORIAS_OPERATIVAS = [
-  'PAGO A ITAU',
   'SEGUROS',
   'CUOTAS DE MANEJO',
   'HONORARIOS Y GASTOS DE COBRANZA',
@@ -49,7 +48,6 @@ export const CATEGORIAS_OPERATIVAS = [
 ] as const;
 
 export const CATEGORIAS_MAESTRAS_16 = [
-  'PAGO A ITAU',
   'SEGUROS',
   'CUOTAS DE MANEJO',
   'HONORARIOS Y GASTOS DE COBRANZA',
@@ -96,12 +94,67 @@ export type CategoriaPQR16 = typeof CATEGORIAS_OPERATIVAS[number] | typeof CATEG
 
 export type TipoPQR = 'PETICIÓN' | 'QUEJA' | 'RECLAMO' | 'SOLICITUD';
 
+export type SentimientoPQR = 'positivo' | 'negativo' | 'neutro';
+
+export type TipoCasoSFC = 'Solicitud' | 'Reclamo';
+
+export type OrigenClasificacion =
+  | 'CLASIFICACION_INICIAL'
+  | 'RECUPERADO_SEGUNDA_VALIDACION'
+  | 'CONFIRMADO_OTRAS';
+
+export interface SegundaValidacionOtrasInfo {
+  ejecutada: boolean;
+  estado: 'NO_APLICA' | 'RECUPERADO' | 'CONFIRMADO_OTRAS' | 'ERROR_CONSERVADO_OTRAS';
+  categoria_inicial: string;
+  subcategoria_inicial: string;
+  categoria_final: string;
+  subcategoria_final: string;
+  motivo_permanencia_otras?: string;
+  resultado_validacion: string;
+  evidencia_validacion?: string;
+  motivo_revision_humana?: string;
+  error_api?: string;
+  fecha_validacion?: string;
+}
+
+export interface GeminiStageUsage {
+  llamadas: number;
+  expedientes_enviados: number;
+  prompt_tokens: number;
+  candidates_tokens: number;
+  total_tokens: number;
+  errores: number;
+}
+
+export interface BatchTelemetryMetrics {
+  llamadas_gemini_total: number;
+  llamadas_clasificacion_inicial: number;
+  llamadas_tipo_caso: number;
+  llamadas_segunda_validacion_otras: number;
+  cache_hits: number;
+  tokens: {
+    disponible: boolean;
+    prompt_tokens: number;
+    candidates_tokens: number;
+    total_tokens: number;
+  };
+  por_etapa: {
+    clasificacion_inicial: GeminiStageUsage;
+    tipo_caso: GeminiStageUsage;
+    segunda_validacion_otras: GeminiStageUsage;
+  };
+  errores_segunda_validacion: string[];
+}
+
 export interface PQRSAnalysis {
   numero_expediente: string;
   // Core user-requested fields
   categoria: CategoriaPQR16 | string;
   categoria_principal?: string;
   subcategoria: string;
+  tipo_caso?: TipoCasoSFC;
+  sentimiento?: SentimientoPQR;
   resumen_requerimiento?: string;
   intencion_cliente?: string;
   confianza: number; // 0 to 100
@@ -121,16 +174,11 @@ export interface PQRSAnalysis {
   categoria_ia?: string;
   subcategoria_ia?: string;
   propuesta_respuesta?: string;
-
-  // Extraction of payment dates and values (ITAU)
-  fecha_pago?: string;
-  valor_pago?: string;
-  pagos_detectados?: {
-    fecha?: string;
-    valor?: string;
-    descripcion?: string;
-    confianza?: string;
-  }[];
+  // Informational tags only (never alter classification or Excel export)
+  etiquetas_informativas?: string[];
+  // Internal traceability for selective second-pass OTRAS validation (never exported to Excel)
+  origen_clasificacion?: OrigenClasificacion;
+  segunda_validacion_otras?: SegundaValidacionOtrasInfo;
 
   // Classical & structured fields (compatible with all views)
   tema_principal: string;
@@ -209,7 +257,6 @@ export interface ColumnDetectionResult {
   descripcionCol: string;
   submotivoCol?: string;
   productoCol?: string;
-  tipoOrigenCol?: string;
   fechaRadicacionCol?: string;
   fechaCompromisoCol?: string;
   todasLasColumnas: string[];
@@ -219,7 +266,6 @@ export interface ColumnDetectionResult {
     descripcion: boolean;
     submotivo?: boolean;
     producto?: boolean;
-    tipoOrigen?: boolean;
     fechaRadicacion?: boolean;
     fechaCompromiso?: boolean;
   };

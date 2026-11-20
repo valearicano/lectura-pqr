@@ -18,7 +18,9 @@ import { validateRecords } from '../services/dataValidator';
 import { clusterRecords } from '../services/similarityService';
 import { SAMPLE_PQRS_DATA } from '../services/sampleData';
 import { classifyPQRDeterministic, buildPQRSAnalysis } from '../services/classifierEngine';
+import { createEmptyBatchTelemetry, mergeBatchTelemetry } from '../services/qualityMetricsService';
 import { 
+  BatchTelemetryMetrics,
   ColumnDetectionResult, 
   EnrichedPQRSRecord, 
   ValidationSummary, 
@@ -27,7 +29,11 @@ import {
 } from '../types';
 
 interface UploadViewProps {
-  onProcessingCompleted: (records: EnrichedPQRSRecord[], groups: SemanticGroup[]) => void;
+  onProcessingCompleted: (
+    records: EnrichedPQRSRecord[],
+    groups: SemanticGroup[],
+    telemetry?: BatchTelemetryMetrics
+  ) => void;
   onNavigate: (tab: string) => void;
 }
 
@@ -42,6 +48,7 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentProgress, setCurrentProgress] = useState<ProcessStatus | null>(null);
   const [completedRecords, setCompletedRecords] = useState<EnrichedPQRSRecord[] | null>(null);
+  const [useAiSentiment, setUseAiSentiment] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -78,16 +85,14 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
   const handleLoadSample = () => {
     const sampleHeaders = [
       'NO_SS',
-      'TIPO ORIGEN',
       'SUBMOTIVO',
       'NOMBRE_PRODUCTO',
       'FECHA_RADICACION',
       'FECHA_DE_COMPROMISO',
       'DESC_DETALLADA'
     ];
-    const sampleRows = SAMPLE_PQRS_DATA.map((item, idx) => ({
+    const sampleRows = SAMPLE_PQRS_DATA.map(item => ({
       NO_SS: item.numero_expediente,
-      'TIPO ORIGEN': (idx % 2 === 0) ? 'ITAU' : 'BANCOLOMBIA',
       SUBMOTIVO: item.submotivo || item.resumen_original,
       NOMBRE_PRODUCTO: item.producto || 'Producto Bancario',
       FECHA_RADICACION: '2026-09-15',
@@ -163,6 +168,7 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
     setCurrentProgress({ ...processStatus });
 
     const analyzedRecords: EnrichedPQRSRecord[] = [];
+    let accumulatedTelemetry: BatchTelemetryMetrics = createEmptyBatchTelemetry();
 
     try {
       // Step A: Process batches with Gemini Analysis
@@ -185,19 +191,12 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
                            r.columnas_adicionales?.['PRODUCTO'] ||
                            r.columnas_adicionales?.['producto'];
 
-          const tipoOrigen = r.columnas_adicionales?.['TIPO ORIGEN'] ||
-                             r.columnas_adicionales?.['tipo_origen'] ||
-                             r.columnas_adicionales?.['Tipo Origen'] ||
-                             r.columnas_adicionales?.['TIPO_ORIGEN'] ||
-                             r.columnas_adicionales?.['ORIGEN'];
-
           return {
             numero_expediente: r.numero_expediente,
             resumen_original: r.resumen_original,
             descripcion_original: r.descripcion_original, // Maintain original description including abbreviations/informal language
             submotivo_original: submotivo,
             producto_original: producto,
-            tipo_origen: tipoOrigen,
             hash_descripcion: r.hash_descripcion,
             columnas_adicionales: r.columnas_adicionales
           };
@@ -207,11 +206,19 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
           const res = await fetch('/api/analyze-batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ records: payload })
+            body: JSON.stringify({ records: payload, useAiSentiment })
           });
           const data = await res.json();
 
           if (data.success && Array.isArray(data.analyses)) {
+            if (data.telemetry) {
+              accumulatedTelemetry = mergeBatchTelemetry(accumulatedTelemetry, data.telemetry);
+              if (Array.isArray(data.telemetry.errores_segunda_validacion)) {
+                data.telemetry.errores_segunda_validacion.forEach((errMsg: string) => {
+                  processStatus.errores.push(`Lote ${currentBatchNum}: ${errMsg}`);
+                });
+              }
+            }
             batch.forEach((rec, idx) => {
               const analysis = data.analyses[idx];
               analyzedRecords.push({
@@ -221,29 +228,26 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
               });
             });
           } else {
-            throw new Error(data.error || 'Error en respuesta de análisis');
+            throw new Error(data.details || data.error || 'Error en respuesta de análisis');
           }
         } catch (batchErr: any) {
           console.warn(`Fallback determinista activado para lote ${currentBatchNum}:`, batchErr);
-          // Apply high-accuracy deterministic classifier so no records are falsely sent to REVISIÓN HUMANA
+          processStatus.errores.push(
+            `Lote ${currentBatchNum}: Gemini no disponible (${batchErr?.message || 'error de API'}). Se aplicó clasificación determinista y sentimiento con reglas locales.`
+          );
+          // Apply deterministic classifier without fabricating fake Gemini sentiment
           batch.forEach(rec => {
             const submotivo = rec.columnas_adicionales?.['SUBMOTIVO'] ||
                               rec.columnas_adicionales?.['submotivo'] ||
                               rec.resumen_original;
             const producto = rec.columnas_adicionales?.['NOMBRE_PRODUCTO'] ||
                               rec.columnas_adicionales?.['nombre_producto'];
-            const tipoOrigen = rec.columnas_adicionales?.['TIPO ORIGEN'] ||
-                               rec.columnas_adicionales?.['tipo_origen'] ||
-                               rec.columnas_adicionales?.['Tipo Origen'] ||
-                               rec.columnas_adicionales?.['TIPO_ORIGEN'] ||
-                               rec.columnas_adicionales?.['ORIGEN'];
             const recordInput = {
               numero_expediente: rec.numero_expediente,
               descripcion_original: rec.descripcion_original,
               resumen_original: rec.resumen_original,
               submotivo_original: submotivo,
               producto_original: producto,
-              tipo_origen: tipoOrigen,
               columnas_adicionales: rec.columnas_adicionales
             };
             const classification = classifyPQRDeterministic(recordInput);
@@ -293,22 +297,7 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
 
       const { groups, recordsWithGroups } = clusterRecords(analyzedRecords, 0.78);
 
-      // Step D: Sync with Supabase (if configured)
-      processStatus.faseActual = 'Sincronizando expedientes con base de datos...';
-      processStatus.porcentaje = 95;
-      setCurrentProgress({ ...processStatus });
-
-      try {
-        await fetch('/api/supabase/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ records: recordsWithGroups })
-        });
-      } catch (dbErr) {
-        console.warn('Sync con Supabase no completada (modo local activo):', dbErr);
-      }
-
-      // Step E: Complete
+      // Step D: Complete
       processStatus.faseActual = 'Procesamiento finalizado exitosamente.';
       processStatus.porcentaje = 100;
       processStatus.estado = processStatus.errores.length > 0 ? 'COMPLETED_WITH_WARNINGS' : 'COMPLETED';
@@ -318,7 +307,7 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
       setCompletedRecords(recordsWithGroups);
 
       // Dispatch results to parent
-      onProcessingCompleted(recordsWithGroups, groups);
+      onProcessingCompleted(recordsWithGroups, groups, accumulatedTelemetry);
     } catch (generalErr: any) {
       console.error('Fallo en el pipeline general:', generalErr);
       processStatus.estado = 'FAILED';
@@ -549,28 +538,44 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
           </div>
 
           {/* Launch Action */}
-          <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="pt-4 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="text-xs text-slate-500">
               Se procesarán <strong>{validation.filasValidas}</strong> expedientes válidos en lotes automáticos con Gemini AI.
             </div>
-            <button
-              id="btn-iniciar-analisis"
-              onClick={handleStartAnalysis}
-              disabled={isProcessing || validation.filasValidas === 0}
-              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
-            >
-              {isProcessing ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Procesando Lotes con IA...
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4 fill-white" />
-                  Iniciar Análisis Inteligente
-                </>
-              )}
-            </button>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto justify-end">
+              <label
+                htmlFor="checkbox-ai-sentiment"
+                className="inline-flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition-colors"
+              >
+                <input
+                  id="checkbox-ai-sentiment"
+                  type="checkbox"
+                  checked={useAiSentiment}
+                  disabled={isProcessing}
+                  onChange={e => setUseAiSentiment(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-[#2F6BFF] focus:ring-[#2F6BFF]"
+                />
+                <span>Analizar sentimiento con IA (usa cuota de Gemini)</span>
+              </label>
+              <button
+                id="btn-iniciar-analisis"
+                onClick={handleStartAnalysis}
+                disabled={isProcessing || validation.filasValidas === 0}
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 shrink-0"
+              >
+                {isProcessing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Procesando Lotes con IA...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 fill-white" />
+                    Iniciar Análisis Inteligente
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -625,11 +630,26 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
             </div>
           </div>
 
+          {/* Gemini API / Processing Warnings */}
+          {currentProgress.errores.length > 0 && (
+            <div className="p-3 rounded-lg bg-amber-950/60 border border-amber-700/70 text-xs text-amber-200 space-y-1">
+              <div className="font-semibold text-amber-300 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>Advertencias durante el análisis con Gemini ({currentProgress.errores.length})</span>
+              </div>
+              <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-100/90">
+                {currentProgress.errores.slice(0, 3).map((err, idx) => (
+                  <li key={idx}>{err}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* Success Call to Action after Completion */}
           {completedRecords && !isProcessing && (
             <div className="mt-4 pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs text-emerald-400 font-semibold">
-                ✓ ¡{completedRecords.length} expedientes analizados y enriquecidos exitosamente!
+                ✓ ¡{completedRecords.length} expedientes analizados y enriquecidos!
               </div>
               <div className="flex items-center gap-2">
                 <button

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, 
   Filter, 
@@ -11,25 +11,72 @@ import {
   Layers,
   ChevronLeft,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Smile,
+  Meh
 } from 'lucide-react';
-import { EnrichedPQRSRecord, CATEGORIAS_OFICIALES_16 } from '../types';
+import { EnrichedPQRSRecord, CATEGORIAS_OFICIALES_16, SentimientoPQR, TipoCasoSFC } from '../types';
 import { exportEnrichedExcel, exportCategoriesSummaryExcel } from '../services/excelService';
+import { inferTipoCasoSFC, detectMencionaItau, ETIQUETA_MENCIONA_ITAU } from '../services/classifierEngine';
 
 interface ExpedientesViewProps {
   records: EnrichedPQRSRecord[];
+  initialSentimentFilter?: SentimientoPQR | 'TODOS';
+  onSentimentFilterChange?: (sentiment: SentimientoPQR | 'TODOS') => void;
+  initialTipoCasoFilter?: TipoCasoSFC | 'TODOS';
+  onTipoCasoFilterChange?: (tipoCaso: TipoCasoSFC | 'TODOS') => void;
   onUpdateRecord?: (updated: EnrichedPQRSRecord) => void;
   onNavigateToReview?: () => void;
 }
 
-export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpdateRecord, onNavigateToReview }) => {
+const TIPO_CASO_META: Record<
+  TipoCasoSFC,
+  { label: string; textClass: string; Icon: React.ComponentType<{ className?: string }> }
+> = {
+  Solicitud: { label: 'Solicitud', textClass: 'text-emerald-700', Icon: Smile },
+  Reclamo: { label: 'Reclamo', textClass: 'text-amber-700', Icon: Meh }
+};
+
+export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
+  records,
+  initialSentimentFilter = 'TODOS',
+  onSentimentFilterChange,
+  initialTipoCasoFilter = 'TODOS',
+  onTipoCasoFilterChange,
+  onUpdateRecord,
+  onNavigateToReview
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTipoPqr, setSelectedTipoPqr] = useState<string>('TODOS');
   const [selectedCategory, setSelectedCategory] = useState<string>('TODAS');
   const [selectedConfidence, setSelectedConfidence] = useState<string>('TODAS');
+  const [selectedSentiment, setSelectedSentiment] = useState<SentimientoPQR | 'TODOS'>(initialSentimentFilter);
+  const [selectedTipoCaso, setSelectedTipoCaso] = useState<TipoCasoSFC | 'TODOS'>(initialTipoCasoFilter);
   const [filterInconsistency, setFilterInconsistency] = useState<string>('TODOS');
   const [filterRequiresReview, setFilterRequiresReview] = useState<string>('TODOS');
   const [filterGroup, setFilterGroup] = useState<string>('TODOS');
+
+  useEffect(() => {
+    setSelectedSentiment(initialSentimentFilter);
+    setCurrentPage(1);
+  }, [initialSentimentFilter]);
+
+  useEffect(() => {
+    setSelectedTipoCaso(initialTipoCasoFilter);
+    setCurrentPage(1);
+  }, [initialTipoCasoFilter]);
+
+  const handleSentimentChange = (value: SentimientoPQR | 'TODOS') => {
+    setSelectedSentiment(value);
+    onSentimentFilterChange?.(value);
+    setCurrentPage(1);
+  };
+
+  const handleTipoCasoChange = (value: TipoCasoSFC | 'TODOS') => {
+    setSelectedTipoCaso(value);
+    onTipoCasoFilterChange?.(value);
+    setCurrentPage(1);
+  };
   
   // Selected record for modal
   const [activeRecord, setActiveRecord] = useState<EnrichedPQRSRecord | null>(null);
@@ -69,6 +116,17 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
 
     if (selectedConfidence !== 'TODAS' && r.analisis?.nivel_confianza !== selectedConfidence) {
       return false;
+    }
+
+    if (selectedSentiment !== 'TODOS' && r.analisis?.sentimiento !== selectedSentiment) {
+      return false;
+    }
+
+    if (selectedTipoCaso !== 'TODOS') {
+      const resolvedTipo = r.analisis?.tipo_caso ?? (r.analisis ? inferTipoCasoSFC(r, r.analisis) : undefined);
+      if (resolvedTipo !== selectedTipoCaso) {
+        return false;
+      }
     }
 
     if (filterInconsistency === 'SI' && !(r.analisis?.existe_inconsistencia === 'SI' || r.analisis?.posible_inconsistencia)) return false;
@@ -145,12 +203,15 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
           </div>
 
           {/* Quick Clear */}
-          {(searchTerm || selectedCategory !== 'TODAS' || selectedConfidence !== 'TODAS' || filterInconsistency !== 'TODOS' || filterRequiresReview !== 'TODOS' || filterGroup !== 'TODOS') && (
+          {(searchTerm || selectedTipoPqr !== 'TODOS' || selectedCategory !== 'TODAS' || selectedConfidence !== 'TODAS' || selectedSentiment !== 'TODOS' || selectedTipoCaso !== 'TODOS' || filterInconsistency !== 'TODOS' || filterRequiresReview !== 'TODOS' || filterGroup !== 'TODOS') && (
             <button
               onClick={() => {
                 setSearchTerm('');
+                setSelectedTipoPqr('TODOS');
                 setSelectedCategory('TODAS');
                 setSelectedConfidence('TODAS');
+                handleSentimentChange('TODOS');
+                handleTipoCasoChange('TODOS');
                 setFilterInconsistency('TODOS');
                 setFilterRequiresReview('TODOS');
                 setFilterGroup('TODOS');
@@ -164,7 +225,7 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
         </div>
 
         {/* Dropdown Filters Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5 pt-2 border-t border-slate-100 text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-7 gap-2.5 pt-2 border-t border-slate-100 text-xs">
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 mb-1">Tipo de PQR:</label>
             <select
@@ -205,6 +266,19 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
               <option value="Alta">Alta (&ge;85%)</option>
               <option value="Media">Media (70-84%)</option>
               <option value="Baja">Baja (&lt;70%)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Tipo de caso:</label>
+            <select
+              value={selectedTipoCaso}
+              onChange={e => handleTipoCasoChange(e.target.value as TipoCasoSFC | 'TODOS')}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-slate-700 font-medium"
+            >
+              <option value="TODOS">Todos</option>
+              <option value="Solicitud">Solicitud</option>
+              <option value="Reclamo">Reclamo</option>
             </select>
           </div>
 
@@ -264,9 +338,8 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                   <th className="py-3 px-3.5">Expediente (NO_SS)</th>
                   <th className="py-3 px-3.5">Categoría Principal</th>
                   <th className="py-3 px-3.5">Subcategoría</th>
-                  <th className="py-3 px-3.5 whitespace-nowrap">Fecha Pago</th>
-                  <th className="py-3 px-3.5 whitespace-nowrap">Valor Pago</th>
                   <th className="py-3 px-3.5">Resumen Requerimiento (Máx 20 Palabras)</th>
+                  <th className="py-3 px-3.5 whitespace-nowrap">Tipo de caso</th>
                   <th className="py-3 px-3.5 text-center">Confianza</th>
                   <th className="py-3 px-3.5 text-center">Revisión Humana</th>
                   <th className="py-3 px-3.5 text-right">Detalle</th>
@@ -299,28 +372,26 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                           {subcat}
                         </span>
                       </td>
-                      <td className="py-3 px-3.5 whitespace-nowrap">
-                        {a?.fecha_pago ? (
-                          <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 inline-flex items-center">
-                            📅 {a.fecha_pago}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">-</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3.5 whitespace-nowrap">
-                        {a?.valor_pago ? (
-                          <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center">
-                            💰 {a.valor_pago}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">-</span>
-                        )}
-                      </td>
                       <td className="py-3 px-3.5 text-slate-800 max-w-md">
                         <p className="font-medium text-slate-900 truncate" title={resumenReq}>
                           {resumenReq}
                         </p>
+                      </td>
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        {(() => {
+                          const resolvedTipo = a?.tipo_caso ?? (a ? inferTipoCasoSFC(r, a) : undefined);
+                          if (resolvedTipo && TIPO_CASO_META[resolvedTipo]) {
+                            const meta = TIPO_CASO_META[resolvedTipo];
+                            const TipoIcon = meta.Icon;
+                            return (
+                              <span className={`inline-flex items-center gap-1 text-xs font-semibold ${meta.textClass}`}>
+                                <TipoIcon className="w-3.5 h-3.5" />
+                                {meta.label}
+                              </span>
+                            );
+                          }
+                          return <span className="text-slate-400">Revisión humana</span>;
+                        })()}
                       </td>
                       <td className="py-3 px-3.5 text-center whitespace-nowrap">
                         {a ? (
@@ -396,9 +467,20 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
             <div className="flex items-start justify-between pb-4 border-b border-slate-200">
               <div>
                 <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">Ficha de Expediente</span>
-                <h3 className="text-xl font-bold text-slate-900">
-                  Expediente: {activeRecord.numero_expediente}
-                </h3>
+                <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                  <h3 className="text-xl font-bold text-slate-900">
+                    Expediente: {activeRecord.numero_expediente}
+                  </h3>
+                  {(activeRecord.analisis?.etiquetas_informativas?.includes(ETIQUETA_MENCIONA_ITAU) ||
+                    detectMencionaItau(activeRecord.descripcion_original)) && (
+                    <span
+                      title="Etiqueta informativa: la descripción menciona Itaú (no afecta la clasificación)"
+                      className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200"
+                    >
+                      {ETIQUETA_MENCIONA_ITAU}
+                    </span>
+                  )}
+                </div>
               </div>
               <button 
                 onClick={() => setActiveRecord(null)}
@@ -516,60 +598,17 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
   expediente: activeRecord.numero_expediente,
   categoria_principal: activeRecord.analisis.categoria_principal || activeRecord.analisis.categoria,
   subcategoria: activeRecord.analisis.subcategoria,
+  ...(activeRecord.analisis.sentimiento ? { sentimiento: activeRecord.analisis.sentimiento } : {}),
   resumen_requerimiento: activeRecord.analisis.resumen_requerimiento || activeRecord.analisis.resumen_normalizado,
   confianza: activeRecord.analisis.confianza,
-  requiere_revision_humana: Boolean(activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision),
-  ...(activeRecord.analisis.fecha_pago ? { fecha_del_pago: activeRecord.analisis.fecha_pago } : {}),
-  ...(activeRecord.analisis.valor_pago ? { valor_del_pago: activeRecord.analisis.valor_pago } : {})
+  requiere_revision_humana: Boolean(activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision)
 }, null, 2)}
                     </pre>
                   </div>
-
-                  {/* Extracción de Datos de Pago Itaú */}
-                  {(activeRecord.analisis.fecha_pago || activeRecord.analisis.valor_pago || (activeRecord.analisis.pagos_detectados && activeRecord.analisis.pagos_detectados.length > 0)) && (
-                    <div className="p-3 bg-white/10 rounded-lg border border-white/20 text-xs text-white space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-black uppercase tracking-wider text-emerald-300 flex items-center">
-                          💳 DATOS DE PAGO EXTRAÍDOS (ITAU)
-                        </span>
-                        {activeRecord.analisis.pagos_detectados && activeRecord.analisis.pagos_detectados.length > 1 && (
-                          <span className="text-[10px] bg-emerald-500/30 text-emerald-200 px-2 py-0.5 rounded font-semibold border border-emerald-400/30">
-                            {activeRecord.analisis.pagos_detectados.length} Pagos Identificados
-                          </span>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                        <div className="p-2 bg-slate-900/40 rounded border border-white/10">
-                          <span className="text-[10px] text-blue-200 block font-semibold">FECHA DEL PAGO:</span>
-                          <span className="font-bold text-sm text-white">
-                            {activeRecord.analisis.fecha_pago || 'No especificada'}
-                          </span>
-                        </div>
-                        <div className="p-2 bg-slate-900/40 rounded border border-white/10">
-                          <span className="text-[10px] text-blue-200 block font-semibold">VALOR DEL PAGO:</span>
-                          <span className="font-bold text-sm text-emerald-300">
-                            {activeRecord.analisis.valor_pago || 'No especificado'}
-                          </span>
-                        </div>
-                      </div>
-                      {activeRecord.analisis.pagos_detectados && activeRecord.analisis.pagos_detectados.length > 1 && (
-                        <div className="pt-1.5 border-t border-white/10 text-[11px] space-y-1">
-                          <span className="text-blue-200 block font-medium">Detalle de pagos individuales vinculados:</span>
-                          {activeRecord.analisis.pagos_detectados.map((p, idx) => (
-                            <div key={idx} className="flex items-center justify-between bg-white/5 px-2 py-1 rounded">
-                              <span className="font-bold text-white">Pago #{idx + 1}:</span>
-                              <span className="text-slate-300">Fecha: <strong className="text-white">{p.fecha || 'N/A'}</strong></span>
-                              <span className="text-slate-300">Valor: <strong className="text-emerald-300">{p.valor || 'N/A'}</strong></span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
 
-                {/* Grid con Producto, Tipo PQR, Motivo, Submotivo */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                {/* Grid con Producto, Tipo PQR, Motivo, Submotivo, Sentimiento */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
                   <div className="p-2.5 rounded-lg bg-white border border-slate-200">
                     <span className="text-slate-500 block font-medium text-[11px]">Tipo de PQR:</span>
                     <span className="font-bold text-blue-900 text-sm">
@@ -593,6 +632,24 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
                     <span className="font-semibold text-slate-800 truncate block">
                       {activeRecord.analisis.subcategoria}
                     </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white border border-slate-200">
+                    <span className="text-slate-500 block font-medium text-[11px]">Tipo de caso:</span>
+                    {(() => {
+                      const resolvedTipo =
+                        activeRecord.analisis.tipo_caso ?? inferTipoCasoSFC(activeRecord, activeRecord.analisis);
+                      if (resolvedTipo && TIPO_CASO_META[resolvedTipo]) {
+                        const meta = TIPO_CASO_META[resolvedTipo];
+                        const TipoIcon = meta.Icon;
+                        return (
+                          <span className={`inline-flex items-center gap-1 font-bold text-sm mt-0.5 ${meta.textClass}`}>
+                            <TipoIcon className="w-4 h-4" />
+                            {meta.label}
+                          </span>
+                        );
+                      }
+                      return <span className="font-medium text-slate-400 text-sm">Pendiente revisión</span>;
+                    })()}
                   </div>
                 </div>
 
@@ -627,17 +684,81 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({ records, onUpd
 
                   {activeRecord.analisis.propuesta_respuesta && (
                     <div className="p-3.5 rounded-lg bg-blue-50 border border-blue-200 space-y-1">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="font-bold text-blue-900 block text-xs uppercase tracking-wide">
                           Propuesta de Respuesta Sugerida:
                         </span>
                         <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">
-                          Canal Oficial
+                          Orientación interna (no es respuesta oficial)
                         </span>
                       </div>
                       <p className="text-slate-800 text-xs leading-relaxed whitespace-pre-wrap">
                         {activeRecord.analisis.propuesta_respuesta}
                       </p>
+                    </div>
+                  )}
+
+                  {/* Internal traceability for selective second-pass OTRAS validation (never exported to Excel) */}
+                  {(activeRecord.analisis.segunda_validacion_otras?.ejecutada ||
+                    (activeRecord.analisis.categoria_principal || activeRecord.analisis.categoria) === 'OTRAS') && (
+                    <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-bold text-slate-800 text-xs">
+                          Trazabilidad de Segunda Validación (OTRAS)
+                        </span>
+                        <span
+                          className={`text-[11px] px-2 py-0.5 rounded font-semibold ${
+                            activeRecord.analisis.origen_clasificacion === 'RECUPERADO_SEGUNDA_VALIDACION'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-900'
+                          }`}
+                        >
+                          {activeRecord.analisis.origen_clasificacion === 'RECUPERADO_SEGUNDA_VALIDACION'
+                            ? 'Recuperado en 2ª validación'
+                            : activeRecord.analisis.segunda_validacion_otras?.estado === 'ERROR_CONSERVADO_OTRAS'
+                              ? 'Conservado en OTRAS (contingencia IA)'
+                              : 'Confirmado en OTRAS'}
+                        </span>
+                      </div>
+                      {activeRecord.analisis.segunda_validacion_otras && (
+                        <div className="space-y-1 text-[11px] text-slate-700">
+                          <p>
+                            <strong>Resultado:</strong>{' '}
+                            {activeRecord.analisis.segunda_validacion_otras.resultado_validacion}
+                          </p>
+                          <p>
+                            <strong>Transición:</strong>{' '}
+                            {activeRecord.analisis.segunda_validacion_otras.categoria_inicial} &gt;{' '}
+                            {activeRecord.analisis.segunda_validacion_otras.subcategoria_inicial} &rarr;{' '}
+                            {activeRecord.analisis.segunda_validacion_otras.categoria_final} &gt;{' '}
+                            {activeRecord.analisis.segunda_validacion_otras.subcategoria_final}
+                          </p>
+                          {activeRecord.analisis.segunda_validacion_otras.motivo_permanencia_otras && (
+                            <p>
+                              <strong>Motivo de permanencia en OTRAS:</strong>{' '}
+                              {activeRecord.analisis.segunda_validacion_otras.motivo_permanencia_otras}
+                            </p>
+                          )}
+                          {activeRecord.analisis.segunda_validacion_otras.evidencia_validacion && (
+                            <p>
+                              <strong>Evidencia textual:</strong>{' '}
+                              "{activeRecord.analisis.segunda_validacion_otras.evidencia_validacion}"
+                            </p>
+                          )}
+                          {activeRecord.analisis.segunda_validacion_otras.motivo_revision_humana && (
+                            <p>
+                              <strong>Motivo de revisión humana:</strong>{' '}
+                              {activeRecord.analisis.segunda_validacion_otras.motivo_revision_humana}
+                            </p>
+                          )}
+                          {activeRecord.analisis.segunda_validacion_otras.error_api && (
+                            <p className="text-rose-700">
+                              <strong>Detalle técnico del error:</strong>{' '}
+                              {activeRecord.analisis.segunda_validacion_otras.error_api}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

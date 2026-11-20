@@ -10,8 +10,8 @@ import { buildPQRSAnalysis, generatePropuestaRespuesta, PQRInputRecord } from '.
 
 console.log('--- TEST SUITE: VERIFICACIÓN ESTRUCTURA EXPORTACIÓN EXCEL ---');
 
-// 1. Verify CANONICAL_ANALYSIS_COLUMNS has exactly 9 items in exact order
-console.log('1. Verificando lista canónica de 9 columnas de análisis...');
+// 1. Verify CANONICAL_ANALYSIS_COLUMNS has exactly 10 items in exact order (9 original + Tipo de caso)
+console.log('1. Verificando lista canónica de 10 columnas de análisis (incluyendo Tipo de caso)...');
 const expectedCanonical = [
   'CATEGORIA PRINCIPAL',
   'SUBCATEGORIA IA',
@@ -21,14 +21,15 @@ const expectedCanonical = [
   'EVIDENCIA',
   'PROPUESTA DE RESPUESTA',
   'NIVEL DE CONFIANZA',
-  'REQUIERE REVISIÓN'
+  'REQUIERE REVISIÓN',
+  'Tipo de caso'
 ];
 
-assert.strictEqual(CANONICAL_ANALYSIS_COLUMNS.length, 9, 'Debe haber exactamente 9 columnas canónicas de análisis');
+assert.strictEqual(CANONICAL_ANALYSIS_COLUMNS.length, 10, 'Debe haber exactamente 10 columnas canónicas de análisis');
 for (let i = 0; i < expectedCanonical.length; i++) {
   assert.strictEqual(CANONICAL_ANALYSIS_COLUMNS[i], expectedCanonical[i], `Columna ${i + 1} debe ser ${expectedCanonical[i]}`);
 }
-console.log('✔ Las 9 columnas canónicas coinciden exactamente en nombre y orden.');
+console.log('✔ Las 10 columnas canónicas coinciden exactamente en nombre y orden.');
 
 // 2. Test record with original uploaded columns and ensure they are preserved without duplication
 console.log('2. Verificando preservación de columnas originales y generación sin duplicados...');
@@ -151,8 +152,8 @@ assert.strictEqual(exportRowDirty['CLIENTE'], 'PEDRO PÉREZ');
 for (const forb of forbiddenDuplicates) {
   assert(!(forb in exportRowDirty), `La clave sucia "${forb}" debió ser eliminada`);
 }
-// Exact total columns: original non-dirty (NO_SS, CLIENTE) + 9 canonical = 11 columns
-assert.strictEqual(dirtyKeys.length, 11, `Se esperaban 11 columnas únicas, pero hay ${dirtyKeys.length}: ${dirtyKeys.join(', ')}`);
+// Exact total columns: original non-dirty (NO_SS, CLIENTE) + 10 canonical = 12 columns
+assert.strictEqual(dirtyKeys.length, 12, `Se esperaban 12 columnas únicas, pero hay ${dirtyKeys.length}: ${dirtyKeys.join(', ')}`);
 console.log('✔ Archivo con columnas antiguas limpiado con éxito: exactamente 1 versión de cada campo.');
 
 // 4. Test Propuesta de Respuesta rules (Section 5)

@@ -3,11 +3,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
-import { analyzePQRSBatch, getEmbedding } from './server/geminiService';
+import { analyzePQRSBatchWithMetrics, getEmbedding } from './server/geminiService';
 import { testSupabaseConnection, saveRecordsToSupabase } from './server/supabaseService';
 import { DEFAULT_CATALOG, getCatalogSummary } from './src/services/catalog';
 import { CategoryItem } from './src/types';
-import { MANDATORY_TEST_SUITE } from './test/mandatoryCases.test';
 
 dotenv.config();
 
@@ -57,15 +56,17 @@ async function startServer() {
   // 3. Batch Analysis via Gemini API
   app.post('/api/analyze-batch', async (req, res) => {
     try {
-      const { records } = req.body;
+      const { records, useAiSentiment = false } = req.body;
       if (!Array.isArray(records) || records.length === 0) {
         return res.status(400).json({ error: 'Se requiere una lista de registros no vacía' });
       }
 
       const catalogSummary = getCatalogSummary(activeCatalog);
-      const analyses = await analyzePQRSBatch(records, catalogSummary);
+      const { analyses, telemetry } = await analyzePQRSBatchWithMetrics(records, catalogSummary, {
+        useAiSentiment: Boolean(useAiSentiment)
+      });
 
-      res.json({ success: true, count: analyses.length, analyses });
+      res.json({ success: true, count: analyses.length, analyses, telemetry });
     } catch (error: any) {
       console.error('Error en /api/analyze-batch:', error);
       res.status(500).json({
@@ -117,38 +118,6 @@ async function startServer() {
     }
     const result = await saveRecordsToSupabase(records);
     res.json(result);
-  });
-
-  // 6. Mandatory Test Cases runner (41 Casos de Negocio, ITAU y Prioridades)
-  app.get('/api/test-cases', async (req, res) => {
-    const mandatoryTestCases = MANDATORY_TEST_SUITE.map(tc => ({
-      numero_expediente: tc.expediente,
-      resumen_original: tc.submotivo || tc.nombre,
-      descripcion_original: tc.descripcion,
-      producto_original: tc.producto,
-      tipo_origen: tc.tipo_origen,
-      columnas_adicionales: {
-        'TIPO ORIGEN': tc.tipo_origen
-      },
-      esperado: tc.categoriaEsperada,
-      subcategoria_esperada: tc.subcategoriaEsperada,
-      producto_esperado: tc.productoEsperado,
-      requiere_revision_esperada: tc.requiereRevisionEsperada
-    }));
-
-    try {
-      const catalogSummary = getCatalogSummary(activeCatalog);
-      const analyses = await analyzePQRSBatch(mandatoryTestCases, catalogSummary);
-
-      const results = mandatoryTestCases.map((tc, idx) => ({
-        ...tc,
-        analisis: analyses[idx]
-      }));
-
-      res.json({ success: true, results, testCases: results });
-    } catch (err: any) {
-      res.status(500).json({ error: 'Error ejecutando casos de prueba', details: err.message });
-    }
   });
 
   // ==========================================

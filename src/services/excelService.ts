@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { EnrichedPQRSRecord, SemanticGroup } from '../types';
+import { inferTipoCasoSFC } from './classifierEngine';
 
 export interface ParsedSheetData {
   headers: string[];
@@ -42,7 +43,7 @@ export async function parseExcelFile(file: File): Promise<ParsedSheetData> {
 }
 
 /**
- * Canonical 9 analysis columns in strict requested order
+ * Canonical analysis columns in strict requested order
  */
 export const CANONICAL_ANALYSIS_COLUMNS = [
   'CATEGORIA PRINCIPAL',
@@ -53,7 +54,8 @@ export const CANONICAL_ANALYSIS_COLUMNS = [
   'EVIDENCIA',
   'PROPUESTA DE RESPUESTA',
   'NIVEL DE CONFIANZA',
-  'REQUIERE REVISIÓN'
+  'REQUIERE REVISIÓN',
+  'Tipo de caso'
 ] as const;
 
 /**
@@ -110,7 +112,11 @@ const LEGACY_ANALYSIS_KEYS = new Set([
   'FECHA DEL PAGO',
   'VALOR DEL PAGO',
   'FECHA DEL PAGO 2',
-  'VALOR DEL PAGO 2'
+  'VALOR DEL PAGO 2',
+  'Tipo de caso',
+  'TIPO DE CASO',
+  'TIPO_CASO',
+  'tipo_caso'
 ]);
 
 /**
@@ -183,17 +189,11 @@ export function buildExportRow(record: EnrichedPQRSRecord): Record<string, any> 
   const propuestaRespuesta = a?.propuesta_respuesta || '';
   const nivelConfianza = normalizeNivelConfianza(a);
   const requiereRevision = normalizeRequiereRevision(a);
+  const tipoCaso = a
+    ? a.tipo_caso || inferTipoCasoSFC(record, a) || (requiereRevision === 'SI' ? 'Pendiente revisión' : '')
+    : 'Sin procesar';
 
-  // 3. Append strictly the 9 canonical columns in exact requested order:
-  // 1. CATEGORIA PRINCIPAL
-  // 2. SUBCATEGORIA IA
-  // 3. PRODUCTO DETECTADO
-  // 4. PROBLEMA PRINCIPAL
-  // 5. RESUMEN
-  // 6. EVIDENCIA
-  // 7. PROPUESTA DE RESPUESTA
-  // 8. NIVEL DE CONFIANZA
-  // 9. REQUIERE REVISIÓN
+  // 3. Append strictly the canonical columns in exact requested order
   row['CATEGORIA PRINCIPAL'] = catPrincipal;
   row['SUBCATEGORIA IA'] = subcatIa;
   row['PRODUCTO DETECTADO'] = productoDetectado;
@@ -203,6 +203,7 @@ export function buildExportRow(record: EnrichedPQRSRecord): Record<string, any> 
   row['PROPUESTA DE RESPUESTA'] = propuestaRespuesta;
   row['NIVEL DE CONFIANZA'] = nivelConfianza;
   row['REQUIERE REVISIÓN'] = requiereRevision;
+  row['Tipo de caso'] = tipoCaso;
 
   return row;
 }
@@ -245,6 +246,7 @@ export function exportEnrichedExcel(
       if (k === 'PROPUESTA DE RESPUESTA') return { wch: 45 };
       if (k === 'NIVEL DE CONFIANZA') return { wch: 18 };
       if (k === 'REQUIERE REVISIÓN') return { wch: 18 };
+      if (k === 'Tipo de caso') return { wch: 18 };
       if (k.toUpperCase().includes('DESC')) return { wch: 45 };
       return { wch: 20 };
     });
@@ -254,16 +256,6 @@ export function exportEnrichedExcel(
   XLSX.utils.book_append_sheet(workbook, worksheet, 'PQRS Analizadas');
 
   XLSX.writeFile(workbook, filename);
-}
-
-/**
- * Unified with exportEnrichedExcel. Directs legacy calls to the single source of truth.
- */
-export function exportItauPaymentsExcel(
-  records: EnrichedPQRSRecord[],
-  filename = 'PQRS_ANALIZADAS.xlsx'
-): void {
-  exportEnrichedExcel(records, filename);
 }
 
 /**

@@ -2,20 +2,6 @@ import { CategoryItem } from '../types';
 
 export const DEFAULT_CATALOG: CategoryItem[] = [
   {
-    id: 'cat-pago-itau',
-    nombre: 'PAGO A ITAU',
-    descripcion: 'Pagos realizados a Itaú no reflejados, no aplicados, pendientes, incompletos, demorados o rechazados (Exclusivo para expedientes con TIPO ORIGEN = ITAU)',
-    activa: true,
-    subcategorias: [
-      { id: 'sub-ita-1', nombre: 'PAGO NO REFLEJADO', activa: true, descripcion: 'Pagos realizados por el cliente que no aparecen reflejados en el saldo o tarjeta' },
-      { id: 'sub-ita-2', nombre: 'APLICACIÓN DE PAGO', activa: true, descripcion: 'Pagos debitados o consignados pendientes o no aplicados a la obligación' },
-      { id: 'sub-ita-3', nombre: 'TRANSFERENCIA NO ABONADA', activa: true, descripcion: 'Transferencias enviadas que no se acreditan en la cuenta o tarjeta Itaú' },
-      { id: 'sub-ita-4', nombre: 'PAGO PENDIENTE / DEMORA', activa: true, descripcion: 'Pagos en proceso con demora excesiva, estado retenido o rechazado' },
-      { id: 'sub-ita-5', nombre: 'COMPROBANTE NO ENCONTRADO', activa: true, descripcion: 'Inconvenientes para ubicar el registro, comprobante o soporte del pago realizado' },
-      { id: 'sub-ita-6', nombre: 'PAGO DUPLICADO / PARCIAL', activa: true, descripcion: 'Solo aparece reflejado uno de los pagos o se presentó débito doble' }
-    ]
-  },
-  {
     id: 'cat-fraudes',
     nombre: 'FRAUDES',
     descripcion: 'Manifestación del cliente de no reconocer operaciones, débitos, compras, transferencias o productos, así como clonación, suplantación o hurto (Prioridad 1)',
@@ -301,8 +287,92 @@ export function getCatalogSummary(catalog: CategoryItem[] = DEFAULT_CATALOG): st
   return catalog
     .filter(c => c.activa)
     .map(c => {
-      const subs = c.subcategorias.filter(s => s.activa).map(s => s.nombre).join(', ');
-      return `- ${c.nombre}: ${c.descripcion}. Subcategorías: [${subs}]`;
+      const subs = c.subcategorias
+        .filter(s => s.activa)
+        .map(s => (s.descripcion ? `${s.nombre} (${s.descripcion})` : s.nombre))
+        .join('; ');
+      return `- ${c.nombre}: ${c.descripcion}.\n  Subcategorías válidas: ${subs}`;
     })
     .join('\n');
 }
+
+function normalizeCatalogKey(value: string): string {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Checks whether a (categoria, subcategoria) pair exists verbatim (ignoring case/accents)
+ * inside the active catalog.
+ */
+export function isValidCatalogPair(
+  categoria: string,
+  subcategoria: string,
+  catalog: CategoryItem[] = DEFAULT_CATALOG
+): boolean {
+  const catKey = normalizeCatalogKey(categoria);
+  const subKey = normalizeCatalogKey(subcategoria);
+  if (!catKey || !subKey) return false;
+
+  const matchedCat = catalog.find(c => c.activa && normalizeCatalogKey(c.nombre) === catKey);
+  if (!matchedCat) return false;
+
+  return matchedCat.subcategorias.some(s => s.activa && normalizeCatalogKey(s.nombre) === subKey);
+}
+
+/**
+ * Resolves a (categoria, subcategoria) pair strictly against the active catalog,
+ * preserving exact uppercase, accents, and valid parent-child pairing.
+ */
+export function validateCatalogPair(
+  categoria: string,
+  subcategoria: string,
+  catalog: CategoryItem[] = DEFAULT_CATALOG
+): { valid: boolean; categoria: string; subcategoria: string } {
+  const catKey = normalizeCatalogKey(categoria);
+  const subKey = normalizeCatalogKey(subcategoria);
+
+  const matchedCat = catalog.find(c => c.activa && normalizeCatalogKey(c.nombre) === catKey);
+  if (!matchedCat) {
+    return {
+      valid: false,
+      categoria: 'OTRAS',
+      subcategoria: 'CASOS ATÍPICOS'
+    };
+  }
+
+  const activeSubs = matchedCat.subcategorias.filter(s => s.activa);
+  const exactSub = activeSubs.find(s => normalizeCatalogKey(s.nombre) === subKey);
+  if (exactSub) {
+    return {
+      valid: true,
+      categoria: matchedCat.nombre,
+      subcategoria: exactSub.nombre
+    };
+  }
+
+  // Try partial containment within the SAME category's valid subcategories
+  const partialSub = activeSubs.find(s => {
+    const sKey = normalizeCatalogKey(s.nombre);
+    return subKey.length > 0 && (sKey.includes(subKey) || subKey.includes(sKey));
+  });
+
+  if (partialSub) {
+    return {
+      valid: true,
+      categoria: matchedCat.nombre,
+      subcategoria: partialSub.nombre
+    };
+  }
+
+  return {
+    valid: false,
+    categoria: matchedCat.nombre,
+    subcategoria: activeSubs[0]?.nombre || 'CASOS ATÍPICOS'
+  };
+}
+

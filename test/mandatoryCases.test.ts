@@ -1,4 +1,5 @@
-import { classifyPQRDeterministic, validateClassificationConsistency, buildPQRSAnalysis } from '../src/services/classifierEngine';
+import { classifyPQRDeterministic, buildPQRSAnalysis, ETIQUETA_MENCIONA_ITAU } from '../src/services/classifierEngine';
+import { buildExportRow } from '../src/services/excelService';
 
 interface TestCase {
   id: number;
@@ -8,10 +9,12 @@ interface TestCase {
   submotivo?: string;
   producto?: string;
   tipo_origen?: string;
+  columnas_adicionales?: Record<string, any>;
   categoriaEsperada: string;
   subcategoriaEsperada: string;
   productoEsperado?: string;
   requiereRevisionEsperada: boolean;
+  esperaEtiquetaItau?: boolean;
 }
 
 export const MANDATORY_TEST_SUITE: TestCase[] = [
@@ -214,170 +217,66 @@ export const MANDATORY_TEST_SUITE: TestCase[] = [
     requiereRevisionEsperada: false
   },
   // =========================================================================
-  // CASOS OBLIGATORIOS: MEJORA PAGOS NO APLICADOS DE ITAÚ (POSITIVOS)
+  // CASOS OBLIGATORIOS: PAGOS NO APLICADOS, DEMORADOS O DUPLICADOS (PAGOS / ABONOS)
   // =========================================================================
   {
     id: 19,
-    nombre: 'Itaú - Pagué mi tarjeta Itaú y no veo el pago',
-    expediente: 'TEST-ITAU-001',
-    tipo_origen: 'ITAU',
+    nombre: 'Pago no reflejado en tarjeta con mención Itaú (Debe ser PAGOS / ABONOS + etiqueta informativa)',
+    expediente: 'TEST-PAG-001',
     descripcion: 'Pagué mi tarjeta Itaú y no veo el pago.',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'PAGO NO REFLEJADO',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
     productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: true
   },
   {
     id: 20,
-    nombre: 'Itaú - Pagué mi tarjeta Itaú en septiembre y no está reflejado',
-    expediente: 'TEST-ITAU-002',
-    tipo_origen: 'itau',
-    descripcion: 'Pagué mi tarjeta Itaú en septiembre y no está reflejado.',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'PAGO NO REFLEJADO',
+    nombre: 'Pago de tarjeta en septiembre sin reflejo (Debe ser PAGOS / ABONOS + etiqueta informativa)',
+    expediente: 'TEST-PAG-002',
+    descripcion: 'Pagué mi tarjeta Itau en septiembre y no está reflejado.',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
     productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: true
   },
   {
     id: 21,
-    nombre: 'Itaú - No veo mis pagos de septiembre y octubre',
-    expediente: 'TEST-ITAU-003',
-    tipo_origen: 'ITAÚ',
+    nombre: 'No veo mis pagos de septiembre y octubre',
+    expediente: 'TEST-PAG-003',
     descripcion: 'No veo mis pagos de septiembre y octubre.',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'PAGO NO REFLEJADO',
-    productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
+    productoEsperado: 'NO ESPECIFICADO',
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: false
   },
   {
     id: 22,
-    nombre: 'Itaú - ¿Dónde están los pagos que realicé?',
-    expediente: 'TEST-ITAU-004',
-    tipo_origen: 'Itau',
+    nombre: '¿Dónde están los pagos que realicé?',
+    expediente: 'TEST-PAG-004',
     descripcion: '¿Dónde están los pagos que realicé?',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'PAGO NO REFLEJADO',
-    productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
+    productoEsperado: 'NO ESPECIFICADO',
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: false
   },
   {
     id: 23,
-    nombre: 'Itaú - El pago de mi tarjeta no se ha aplicado',
-    expediente: 'TEST-ITAU-005',
-    tipo_origen: 'ITAU',
+    nombre: 'El pago de mi tarjeta no se ha aplicado',
+    expediente: 'TEST-PAG-005',
     descripcion: 'El pago de mi tarjeta no se ha aplicado.',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
-    productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
-  },
-  {
-    id: 24,
-    nombre: 'Itaú - Realicé una transferencia y no aparece abonada',
-    expediente: 'TEST-ITAU-006',
-    tipo_origen: 'ITAU',
-    descripcion: 'Realicé una transferencia y no aparece abonada.',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'TRANSFERENCIA NO ABONADA',
-    productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
-  },
-  {
-    id: 25,
-    nombre: 'Itaú - Me descontaron el dinero, pero no se refleja en mi tarjeta',
-    expediente: 'TEST-ITAU-007',
-    tipo_origen: 'ITAU',
-    descripcion: 'Me descontaron el dinero, pero no se refleja en mi tarjeta.',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'PAGO NO REFLEJADO',
-    productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
-  },
-  {
-    id: 26,
-    nombre: 'Itaú - Mi pago sigue pendiente de aplicación',
-    expediente: 'TEST-ITAU-008',
-    tipo_origen: 'ITAU',
-    descripcion: 'Mi pago sigue pendiente de aplicación.',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
-    productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
-  },
-  {
-    id: 27,
-    nombre: 'Itaú - Solo aparece uno de los dos pagos que realicé',
-    expediente: 'TEST-ITAU-009',
-    tipo_origen: 'ITAU',
-    descripcion: 'Solo aparece uno de los dos pagos que realicé.',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'PAGO DUPLICADO / PARCIAL',
-    productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
-  },
-  {
-    id: 28,
-    nombre: 'Itaú - Pagué en septiembre y todavía no aparece en octubre',
-    expediente: 'TEST-ITAU-010',
-    tipo_origen: 'ITAU',
-    descripcion: 'Pagué en septiembre y todavía no aparece en octubre.',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'PAGO NO REFLEJADO',
-    productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
-  },
-  {
-    id: 29,
-    nombre: 'Itaú - El pago aparece debitado de mi cuenta, pero no aplicado a la obligación',
-    expediente: 'TEST-ITAU-011',
-    tipo_origen: 'ITAU',
-    descripcion: 'El pago aparece debitado de mi cuenta, pero no aplicado a la obligación.',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
-    productoEsperado: 'CUENTA DE AHORROS',
-    requiereRevisionEsperada: false
-  },
-  {
-    id: 30,
-    nombre: 'Itaú - No encuentro el comprobante o el registro del pago realizado',
-    expediente: 'TEST-ITAU-012',
-    tipo_origen: 'ITAU',
-    descripcion: 'No encuentro el comprobante o el registro del pago realizado.',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'COMPROBANTE NO ENCONTRADO',
-    productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
-  },
-  {
-    id: 31,
-    nombre: 'Itaú - El pago fue rechazado, quedó pendiente o presenta una demora en su aplicación',
-    expediente: 'TEST-ITAU-013',
-    tipo_origen: 'ITAU',
-    descripcion: 'El pago fue rechazado, quedó pendiente o presenta una demora en su aplicación.',
-    categoriaEsperada: 'PAGO A ITAU',
-    subcategoriaEsperada: 'PAGO PENDIENTE / DEMORA',
-    productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
-  },
-  // =========================================================================
-  // CASOS NEGATIVOS: ORIGEN DIFERENTE DE ITAU (NO DEBEN CLASIFICARSE COMO PAGO A ITAU)
-  // =========================================================================
-  {
-    id: 32,
-    nombre: 'Origen Bancolombia - Pago no reflejado (Debe ser PAGOS / ABONOS)',
-    expediente: 'TEST-NEG-001',
-    tipo_origen: 'BANCOLOMBIA',
-    descripcion: 'Pagué mi tarjeta Itaú y no veo el pago.',
     categoriaEsperada: 'PAGOS / ABONOS',
     subcategoriaEsperada: 'APLICACIÓN DE PAGO',
     productoEsperado: 'TARJETA DE CRÉDITO',
     requiereRevisionEsperada: false
   },
   {
-    id: 33,
-    nombre: 'Origen Davivienda - Transferencia no abonada (Debe ser TRANSFERENCIAS)',
-    expediente: 'TEST-NEG-002',
-    tipo_origen: 'DAVIVIENDA',
+    id: 24,
+    nombre: 'Transferencia no abonada (Debe ser TRANSFERENCIAS)',
+    expediente: 'TEST-PAG-006',
     descripcion: 'Realicé una transferencia y no aparece abonada.',
     categoriaEsperada: 'TRANSFERENCIAS',
     subcategoriaEsperada: 'TRANSFERENCIAS',
@@ -385,95 +284,236 @@ export const MANDATORY_TEST_SUITE: TestCase[] = [
     requiereRevisionEsperada: false
   },
   {
-    id: 34,
-    nombre: 'Sin origen especificado - ¿Dónde están los pagos? (Debe ser PAGOS / ABONOS)',
-    expediente: 'TEST-NEG-003',
-    tipo_origen: '',
-    descripcion: '¿Dónde están los pagos que realicé?',
+    id: 25,
+    nombre: 'Dinero descontado pero no reflejado en tarjeta',
+    expediente: 'TEST-PAG-007',
+    descripcion: 'Me descontaron el dinero, pero no se refleja en mi tarjeta.',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
+    productoEsperado: 'TARJETA DE CRÉDITO',
+    requiereRevisionEsperada: false
+  },
+  {
+    id: 26,
+    nombre: 'Pago pendiente de aplicación',
+    expediente: 'TEST-PAG-008',
+    descripcion: 'Mi pago sigue pendiente de aplicación.',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
+    productoEsperado: 'NO ESPECIFICADO',
+    requiereRevisionEsperada: false
+  },
+  {
+    id: 27,
+    nombre: 'Pago parcial / solo aparece uno de dos pagos',
+    expediente: 'TEST-PAG-009',
+    descripcion: 'Solo aparece uno de los dos pagos que realicé.',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
+    productoEsperado: 'NO ESPECIFICADO',
+    requiereRevisionEsperada: false
+  },
+  {
+    id: 28,
+    nombre: 'Pago en septiembre que no aparece en octubre',
+    expediente: 'TEST-PAG-010',
+    descripcion: 'Pagué en septiembre y todavía no aparece en octubre.',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
+    productoEsperado: 'NO ESPECIFICADO',
+    requiereRevisionEsperada: false
+  },
+  {
+    id: 29,
+    nombre: 'Pago debitado de cuenta pero no aplicado a la obligación',
+    expediente: 'TEST-PAG-011',
+    descripcion: 'El pago aparece debitado de mi cuenta, pero no aplicado a la obligación.',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
+    productoEsperado: 'CUENTA DE AHORROS',
+    requiereRevisionEsperada: false
+  },
+  {
+    id: 30,
+    nombre: 'No encuentro el comprobante o registro del pago realizado',
+    expediente: 'TEST-PAG-012',
+    descripcion: 'No encuentro el comprobante o el registro del pago realizado.',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
+    productoEsperado: 'NO ESPECIFICADO',
+    requiereRevisionEsperada: false
+  },
+  {
+    id: 31,
+    nombre: 'Pago rechazado, pendiente o con demora en aplicación',
+    expediente: 'TEST-PAG-013',
+    descripcion: 'El pago fue rechazado, quedó pendiente o presenta una demora en su aplicación.',
     categoriaEsperada: 'PAGOS / ABONOS',
     subcategoriaEsperada: 'APLICACIÓN DE PAGO',
     productoEsperado: 'NO ESPECIFICADO',
     requiereRevisionEsperada: false
   },
   // =========================================================================
-  // CASOS NEGATIVOS: ORIGEN ITAU CON OTROS TEMAS (DEBEN CONSERVAR SU CATEGORÍA ESPECÍFICA)
+  // VERIFICACIÓN DE ETIQUETA INFORMATIVA SIN ALTERAR OTRAS CATEGORÍAS
   // =========================================================================
   {
-    id: 35,
-    nombre: 'Itaú - Compra no reconocida (Debe ser FRAUDES)',
-    expediente: 'TEST-NEG-004',
-    tipo_origen: 'ITAU',
+    id: 32,
+    nombre: 'Compra no reconocida mencionando Itaú (Debe ser FRAUDES + etiqueta informativa)',
+    expediente: 'TEST-TAG-001',
     descripcion: 'No reconozco una compra realizada con mi tarjeta de crédito Itaú en un comercio electrónico.',
     categoriaEsperada: 'FRAUDES',
     subcategoriaEsperada: 'OPERACIÓN NO RECONOCIDA',
     productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: true
   },
   {
-    id: 36,
-    nombre: 'Itaú - Cobro cuota de manejo (Debe ser CUOTA DE MANEJO)',
-    expediente: 'TEST-NEG-005',
-    tipo_origen: 'ITAU',
+    id: 33,
+    nombre: 'Cuota de manejo mencionando Itaú (Debe ser CUOTAS DE MANEJO + etiqueta informativa)',
+    expediente: 'TEST-TAG-002',
     descripcion: 'Me están cobrando cuota de manejo en mi tarjeta de crédito Itaú y solicito exoneración acordada.',
     categoriaEsperada: 'CUOTA DE MANEJO',
     subcategoriaEsperada: 'COBRO',
     productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: true
   },
   {
-    id: 37,
-    nombre: 'Itaú - Solicitud de aumento de cupo (Debe ser TARJETAS)',
-    expediente: 'TEST-NEG-006',
-    tipo_origen: 'ITAU',
+    id: 34,
+    nombre: 'Aumento de cupo mencionando Itaú (Debe ser TARJETAS + etiqueta informativa)',
+    expediente: 'TEST-TAG-003',
     descripcion: 'Solicito aumento de cupo para mi tarjeta de crédito Visa Itaú.',
     categoriaEsperada: 'TARJETAS',
     subcategoriaEsperada: 'CUPO Y AVANCES',
     productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: true
   },
   {
-    id: 38,
-    nombre: 'Itaú - Error en pasarela PSE (Debe ser PSE)',
-    expediente: 'TEST-NEG-007',
-    tipo_origen: 'ITAU',
-    descripcion: 'Presento error al realizar el pago de mi tarjeta por medio de PSE, la pasarela rechazó la operación.',
-    categoriaEsperada: 'PSE',
-    subcategoriaEsperada: 'ERROR / FALLA PSE',
-    productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: false
-  },
-  {
-    id: 39,
-    nombre: 'Itaú - Paz y salvo (Debe ser INFORMACIÓN Y DOCUMENTOS)',
-    expediente: 'TEST-NEG-008',
-    tipo_origen: 'ITAU',
+    id: 35,
+    nombre: 'Paz y salvo mencionando Itaú (Debe ser INFORMACIÓN Y DOCUMENTOS + etiqueta informativa)',
+    expediente: 'TEST-TAG-004',
     descripcion: 'Solicito certificado de paz y salvo de mi obligación Itaú que ya fue cancelada en su totalidad.',
     categoriaEsperada: 'INFORMACIÓN Y DOCUMENTOS',
     subcategoriaEsperada: 'CERTIFICADOS Y PAZ Y SALVO',
     productoEsperado: 'NO ESPECIFICADO',
-    requiereRevisionEsperada: false
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: true
   },
   {
-    id: 40,
-    nombre: 'Itaú - Descripción insuficiente (Debe ser REVISIÓN HUMANA)',
-    expediente: 'TEST-NEG-009',
-    tipo_origen: 'ITAU',
-    descripcion: 'revisar mi caso',
-    categoriaEsperada: 'REVISIÓN HUMANA',
-    subcategoriaEsperada: 'INFORMACIÓN INSUFICIENTE',
-    productoEsperado: 'NO ESPECIFICADO',
-    requiereRevisionEsperada: true
-  },
-  {
-    id: 41,
-    nombre: 'Itaú - Mención aislada de producto sin problema (Debe ser REVISIÓN HUMANA)',
-    expediente: 'TEST-NEG-010',
-    tipo_origen: 'ITAU',
+    id: 36,
+    nombre: 'Mención aislada de producto sin problema (Debe ser REVISIÓN HUMANA + etiqueta informativa)',
+    expediente: 'TEST-TAG-005',
     descripcion: 'tarjeta de credito itau',
     categoriaEsperada: 'REVISIÓN HUMANA',
     subcategoriaEsperada: 'INFORMACIÓN INSUFICIENTE',
     productoEsperado: 'TARJETA DE CRÉDITO',
-    requiereRevisionEsperada: true
+    requiereRevisionEsperada: true,
+    esperaEtiquetaItau: true
+  },
+  // =========================================================================
+  // CASOS OBLIGATORIOS DE VALIDACIÓN UNIFICACIÓN DE PRODUCTOS Y PAGOS / ABONOS
+  // =========================================================================
+  {
+    id: 37,
+    nombre: 'Pago de crédito no aplicado (con mención de cuota de crédito -> PAGOS / ABONOS)',
+    expediente: 'TEST-UNI-001',
+    descripcion: 'Realicé el pago de la cuota de mi crédito de libre inversión hace 5 días y todavía no aparece aplicado.',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
+    productoEsperado: 'CRÉDITO DE LIBRE INVERSIÓN',
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: false
+  },
+  {
+    id: 38,
+    nombre: 'Pago duplicado con solicitud de devolución (CRÉDITOS / CARTERA > REVERSIÓN)',
+    expediente: 'TEST-UNI-002',
+    descripcion: 'Realicé un pago duplicado de mi crédito de consumo y solicito la devolución del dinero.',
+    categoriaEsperada: 'CRÉDITOS / CARTERA',
+    subcategoriaEsperada: 'REVERSIÓN',
+    productoEsperado: 'CRÉDITO DE CONSUMO',
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: false
+  },
+  {
+    id: 39,
+    nombre: 'Abono aplicado incorrectamente a crédito (CRÉDITOS / CARTERA > REAPLICACIONES)',
+    expediente: 'TEST-UNI-003',
+    descripcion: 'Realicé un abono a capital en mi crédito de vivienda y fue aplicado incorrectamente a intereses.',
+    categoriaEsperada: 'CRÉDITOS / CARTERA',
+    subcategoriaEsperada: 'REAPLICACIONES',
+    productoEsperado: 'CRÉDITO DE VIVIENDA',
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: false
+  },
+  {
+    id: 40,
+    nombre: 'Abono aplicado incorrectamente en tarjeta (PAGOS / ABONOS > APLICACIÓN DE PAGO)',
+    expediente: 'TEST-UNI-004',
+    descripcion: 'Hice un abono a mi tarjeta de crédito y quedó aplicado incorrectamente en el saldo.',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
+    productoEsperado: 'TARJETA DE CRÉDITO',
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: false
+  },
+  {
+    id: 41,
+    nombre: 'Solicitud de devolución de un pago (CRÉDITOS / CARTERA > REVERSIÓN)',
+    expediente: 'TEST-UNI-005',
+    descripcion: 'Solicito la devolución de un pago que realicé por error a mi obligación.',
+    categoriaEsperada: 'CRÉDITOS / CARTERA',
+    subcategoriaEsperada: 'REVERSIÓN',
+    productoEsperado: 'CRÉDITO / CARTERA',
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: false
+  },
+  {
+    id: 42,
+    nombre: 'Antiguo cliente Itaú con pago de crédito no reflejado (clasificación normal + etiqueta informativa)',
+    expediente: 'TEST-UNI-006',
+    descripcion: 'Soy antiguo cliente de Itaú, realicé el pago de mi crédito de vehículo y no aparece reflejado.',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
+    productoEsperado: 'CRÉDITO DE VEHÍCULO',
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: true
+  },
+  {
+    id: 43,
+    nombre: 'TIPO ORIGEN = ITAÚ pero descripción NO menciona Itaú (no altera clasificación ni genera etiqueta)',
+    expediente: 'TEST-UNI-007',
+    descripcion: 'Realicé el pago de mi tarjeta de crédito y aún no se ve reflejado en el saldo.',
+    tipo_origen: 'ITAU',
+    columnas_adicionales: { NO_SS: 'TEST-UNI-007', 'TIPO ORIGEN': 'ITAU', DESC_DETALLADA: 'Realicé el pago de mi tarjeta de crédito y aún no se ve reflejado en el saldo.' },
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'APLICACIÓN DE PAGO',
+    productoEsperado: 'TARJETA DE CRÉDITO',
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: false
+  },
+  {
+    id: 44,
+    nombre: 'Cancelación de débito automático (PAGOS / ABONOS > DÉBITOS AUTOMÁTICOS)',
+    expediente: 'TEST-UNI-008',
+    descripcion: 'Solicito cancelar el débito automático inscrito en mi cuenta de ahorros para el pago mensual.',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'DÉBITOS AUTOMÁTICOS',
+    productoEsperado: 'CUENTA DE AHORROS',
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: false
+  },
+  {
+    id: 45,
+    nombre: 'Pago de servicio público / convenio no aplicado (PAGOS / ABONOS > PAGOS Y RECAUDOS)',
+    expediente: 'TEST-UNI-009',
+    descripcion: 'Realicé el pago de la factura del servicio público de energía por convenio y no se reflejó.',
+    categoriaEsperada: 'PAGOS / ABONOS',
+    subcategoriaEsperada: 'PAGOS Y RECAUDOS',
+    productoEsperado: 'NO ESPECIFICADO',
+    requiereRevisionEsperada: false,
+    esperaEtiquetaItau: false
   }
 ];
 
@@ -492,9 +532,7 @@ export function runTests(): { success: boolean; total: number; passed: number; f
       submotivo_original: tc.submotivo,
       producto_original: tc.producto,
       tipo_origen: tc.tipo_origen,
-      columnas_adicionales: {
-        'TIPO ORIGEN': tc.tipo_origen
-      }
+      columnas_adicionales: tc.columnas_adicionales
     };
 
     const det = classifyPQRDeterministic(record);
@@ -508,21 +546,71 @@ export function runTests(): { success: boolean; total: number; passed: number; f
       (tc.subcategoriaEsperada.includes('DEVOLUCIÓN') && analysis.subcategoria.includes('DEVOLUCIÓN'));
     const revOk = analysis.requiere_revision === tc.requiereRevisionEsperada;
     const prodOk = tc.productoEsperado ? analysis.producto_detectado === tc.productoEsperado : true;
+    const hasTag = Boolean(analysis.etiquetas_informativas?.includes(ETIQUETA_MENCIONA_ITAU));
+    const tagOk = tc.esperaEtiquetaItau === undefined ? true : hasTag === tc.esperaEtiquetaItau;
 
-    if (catOk && subOk && revOk && prodOk) {
+    // Verify Excel row never contains the informational tag or Itaú analysis columns,
+    // while preserving original source columns such as TIPO ORIGEN if present in the upload.
+    const exportRow = buildExportRow({
+      id: tc.expediente,
+      numero_expediente: tc.expediente,
+      resumen_original: tc.submotivo || '',
+      descripcion_original: tc.descripcion,
+      columnas_adicionales: tc.columnas_adicionales,
+      analisis: analysis
+    });
+    const exportValues = Object.values(exportRow).map(v => String(v || ''));
+    const preservesOriginalTipoOrigen = tc.columnas_adicionales?.['TIPO ORIGEN']
+      ? exportRow['TIPO ORIGEN'] === tc.columnas_adicionales['TIPO ORIGEN']
+      : true;
+    const exportCleanOk =
+      !Object.keys(exportRow).some(k => k.toLowerCase().includes('itau') || k.toLowerCase().includes('etiqueta')) &&
+      !exportValues.includes(ETIQUETA_MENCIONA_ITAU) &&
+      preservesOriginalTipoOrigen;
+
+    if (catOk && subOk && revOk && prodOk && tagOk && exportCleanOk) {
       passed++;
       console.log(`✓ [PASÓ] Caso #${tc.id.toString().padStart(2, '0')} - ${tc.nombre}`);
-      console.log(`   Cat: ${analysis.categoria_principal} | Sub: ${analysis.subcategoria} | Prod: ${analysis.producto_detectado} | RevHumana: ${analysis.requiere_revision ? 'SI' : 'NO'}`);
+      console.log(`   Cat: ${analysis.categoria_principal} | Sub: ${analysis.subcategoria} | Prod: ${analysis.producto_detectado} | RevHumana: ${analysis.requiere_revision ? 'SI' : 'NO'}${hasTag ? ` | Etiqueta: ${ETIQUETA_MENCIONA_ITAU}` : ''}`);
     } else {
       const msg = `✗ [FALLÓ] Caso #${tc.id} - ${tc.nombre}:
         Cat Obtenida: "${analysis.categoria_principal}" (Esperada: "${tc.categoriaEsperada}") -> ${catOk ? 'OK' : 'ERROR'}
         Sub Obtenida: "${analysis.subcategoria}" (Esperada: "${tc.subcategoriaEsperada}") -> ${subOk ? 'OK' : 'ERROR'}
         Rev Obtenida: ${analysis.requiere_revision} (Esperada: ${tc.requiereRevisionEsperada}) -> ${revOk ? 'OK' : 'ERROR'}
-        Prod Obtenido: "${analysis.producto_detectado}" (Esperado: "${tc.productoEsperado}") -> ${prodOk ? 'OK' : 'ERROR'}`;
+        Prod Obtenido: "${analysis.producto_detectado}" (Esperado: "${tc.productoEsperado}") -> ${prodOk ? 'OK' : 'ERROR'}
+        Tag Itaú: ${hasTag} (Esperada: ${tc.esperaEtiquetaItau}) -> ${tagOk ? 'OK' : 'ERROR'}
+        Excel limpio: ${exportCleanOk ? 'OK' : 'ERROR'}`;
       failures.push(msg);
       console.error(msg);
     }
   });
+
+  // Explicit A/B invariance test: mentioning "Itaú" must NEVER alter classification, product, confidence, review, problem or summary
+  const baseRec = {
+    numero_expediente: 'INV-A',
+    descripcion_original: 'Realicé el pago de mi tarjeta de crédito ayer y aún no se ve reflejado en el saldo.'
+  };
+  const itauRec = {
+    numero_expediente: 'INV-B',
+    descripcion_original: 'Realicé el pago de mi tarjeta de crédito Itaú ayer y aún no se ve reflejado en el saldo.'
+  };
+  const baseAnalysis = buildPQRSAnalysis(baseRec, classifyPQRDeterministic(baseRec));
+  const itauAnalysis = buildPQRSAnalysis(itauRec, classifyPQRDeterministic(itauRec));
+  const invarianceOk =
+    baseAnalysis.categoria_principal === itauAnalysis.categoria_principal &&
+    baseAnalysis.subcategoria === itauAnalysis.subcategoria &&
+    baseAnalysis.producto_detectado === itauAnalysis.producto_detectado &&
+    baseAnalysis.confianza === itauAnalysis.confianza &&
+    baseAnalysis.requiere_revision === itauAnalysis.requiere_revision &&
+    baseAnalysis.problema_principal === itauAnalysis.problema_principal &&
+    !(baseAnalysis.etiquetas_informativas || []).includes(ETIQUETA_MENCIONA_ITAU) &&
+    Boolean(itauAnalysis.etiquetas_informativas?.includes(ETIQUETA_MENCIONA_ITAU));
+
+  if (!invarianceOk) {
+    failures.push('✗ [FALLÓ] Invarianza etiqueta Menciona Itaú: la mención a Itaú alteró algún campo de clasificación.');
+  } else {
+    console.log('✓ [PASÓ] Prueba de invarianza A/B: mencionar Itaú SOLO agrega la etiqueta informativa sin alterar categoría, subcategoría, producto, confianza, revisión ni problema.');
+  }
 
   console.log('-'.repeat(80));
   console.log(`RESULTADO: ${passed}/${MANDATORY_TEST_SUITE.length} pruebas pasadas (${((passed / MANDATORY_TEST_SUITE.length) * 100).toFixed(1)}%)`);

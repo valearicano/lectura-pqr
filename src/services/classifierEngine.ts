@@ -1,5 +1,298 @@
-import { PQRSAnalysis } from '../types';
-import { extractItauPaymentDetails } from './paymentExtractor';
+import {
+  OrigenClasificacion,
+  PQRSAnalysis,
+  SegundaValidacionOtrasInfo,
+  SentimientoPQR,
+  TipoCasoSFC
+} from '../types';
+import { validateCatalogPair } from './catalog';
+
+export interface LocalSentimentResult {
+  sentimiento: SentimientoPQR;
+  dudoso: boolean;
+}
+
+/**
+ * Classifies PQR sentiment locally using deterministic linguistic rules.
+ * Returns `dudoso: true` only when signals are mixed, subtle, or ambiguous
+ * so optional AI sentiment analysis can target exclusively doubtful cases.
+ */
+export function classifySentimentLocal(
+  descripcion?: string,
+  categoria?: string
+): LocalSentimentResult {
+  const raw = String(descripcion || '').trim();
+  if (!raw) {
+    return { sentimiento: 'neutro', dudoso: false };
+  }
+
+  const text = raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const cat = String(categoria || '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const positiveRegex =
+    /\b(felicit[a-z]*|excelente\s+(atencion|servicio|gestion|trato|asesoria)|muy\s+buen\s+(servicio|trato|acompanamiento)|gran\s+(servicio|atencion|labor)|destacar\s+la\s+labor|satisfech[oa]|maravillos[oa]|agradecimiento\s+especial|quiero\s+agradecer|deseo\s+agradecer|muchas\s+gracias\s+por\s+(la\s+excelente|su\s+excelente|el\s+buen|la\s+rapida|la\s+pronta))\b/;
+
+  const courtesyRegex =
+    /\b(agradezco|agradeceria|muchas\s+gracias|cordialmente|amablemente|por\s+favor)\b/;
+
+  const strongNegativeRegex =
+    /\b(fraude|suplantacion|clonacion|robo|hurto|estafa|no\s+reconozco|desconozco|pesim[oa]|mal\s+trato|mal\s+servicio|groser[oa]|indignad[oa]|molest[oa]|inaceptable|inconformidad|inconforme|desacuerdo|abuso|cobro\s+indebido|cobro\s+no\s+autorizado|doble\s+cobro|pago\s+duplicado|no\s+se\s+refleja|no\s+reflejado|no\s+aplicado|sin\s+aplicar|demora\s+excesiva|sin\s+respuesta|no\s+me\s+responden|no\s+han\s+respondido|no\s+me\s+han\s+dado\s+respuesta|reporte\s+negativo|datacredito|queja|reclamo|inconveniente|problema|error\s+del\s+banco|falla\s+en|me\s+cobraron|me\s+debitaron|me\s+descontaron|nunca\s+acepte|no\s+autorice|no\s+solicite|aumentaron\s+la\s+cuota|sigue\s+activa|no\s+he\s+podido\s+cancelar|embargo|honorarios|cobranza)\b/;
+
+  const mildNegativeRegex =
+    /\b(demora|tardanza|retraso|bloquead[oa]|rechazad[oa]|devolucion|reversion|reembolso|ajustar|corregir|excesiv[oa]|alto\s+cobro|no\s+puedo|impide|dificultad|preocupacion|urgente|insisto|nuevamente|otra\s+vez|ya\s+van)\b/;
+
+  const neutralRequestRegex =
+    /\b(solicito\s+(certificado|certificacion|paz\s+y\s+salvo|extracto|copia|informacion|actualizacion|cambio\s+de\s+fecha|aumento\s+de\s+cupo|marcacion|desmarcacion|historico|plan\s+de\s+pagos|estado\s+de\s+cuenta)|actualizacion\s+de\s+datos|cambio\s+de\s+fecha\s+de\s+pago|marcar\s+(mi\s+)?cuenta\s+exenta|exencion\s+de(l)?\s+4x1000|desmarcacion\s+de(l)?\s+4x1000|consulta\s+de\s+saldo|informacion\s+sobre|copia\s+del\s+contrato|copia\s+del\s+pagare|certificado\s+tributario|paz\s+y\s+salvo)\b/;
+
+  const hasPositive = positiveRegex.test(text);
+  const hasCourtesy = courtesyRegex.test(text);
+  const hasStrongNegative = strongNegativeRegex.test(text);
+  const hasMildNegative = mildNegativeRegex.test(text);
+  const hasNeutralRequest = neutralRequestRegex.test(text);
+
+  if (hasPositive && (hasStrongNegative || hasMildNegative)) {
+    return { sentimiento: 'negativo', dudoso: true };
+  }
+
+  if (hasPositive) {
+    return { sentimiento: 'positivo', dudoso: false };
+  }
+
+  if (
+    hasStrongNegative ||
+    cat === 'FRAUDES' ||
+    cat === 'HONORARIOS Y GASTOS DE COBRANZA'
+  ) {
+    return { sentimiento: 'negativo', dudoso: false };
+  }
+
+  if (hasMildNegative && (hasCourtesy || hasNeutralRequest)) {
+    return { sentimiento: 'negativo', dudoso: true };
+  }
+
+  if (hasMildNegative) {
+    const mildMatches = text.match(
+      /\b(demora|tardanza|retraso|bloquead[oa]|rechazad[oa]|devolucion|reversion|reembolso|ajustar|corregir|excesiv[oa]|no\s+puedo|impide|dificultad|preocupacion|urgente|insisto|nuevamente|otra\s+vez|ya\s+van)\b/g
+    );
+    if (mildMatches && mildMatches.length >= 2) {
+      return { sentimiento: 'negativo', dudoso: false };
+    }
+    return { sentimiento: 'negativo', dudoso: true };
+  }
+
+  if (hasNeutralRequest) {
+    return { sentimiento: 'neutro', dudoso: false };
+  }
+
+  if (text.length < 15) {
+    return { sentimiento: 'neutro', dudoso: false };
+  }
+
+  return { sentimiento: 'neutro', dudoso: true };
+}
+
+export function normalizeSentimiento(raw?: unknown): SentimientoPQR | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const clean = raw
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  if (clean === 'positivo' || clean === 'positive') return 'positivo';
+  if (clean === 'negativo' || clean === 'negative') return 'negativo';
+  if (clean === 'neutro' || clean === 'neutral') return 'neutro';
+  return undefined;
+}
+
+export function normalizeTipoCaso(raw?: unknown): TipoCasoSFC | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const clean = raw
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  if (clean === 'solicitud' || clean === 'solicitudes') return 'Solicitud';
+  if (clean === 'reclamo' || clean === 'reclamos') return 'Reclamo';
+  return undefined;
+}
+
+/**
+ * Classifies a case into Superfinanciera 'Solicitud' (ajustes no monetarios)
+ * or 'Reclamo' (ajustes monetarios). Returns undefined when uncertain so the
+ * case is routed to Revisión humana rather than forced.
+ */
+export function inferTipoCasoSFC(
+  record: { descripcion_original?: string; resumen_original?: string },
+  analysis?: Partial<PQRSAnalysis>
+): TipoCasoSFC | undefined {
+  const existing = normalizeTipoCaso(analysis?.tipo_caso);
+  if (existing) return existing;
+
+  const cat = String(analysis?.categoria_principal || analysis?.categoria || '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const sub = String(analysis?.subcategoria || '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const isInsufficient =
+    cat === 'REVISION HUMANA' ||
+    cat === 'INFORMACION INSUFICIENTE' ||
+    analysis?.requiere_revision === true ||
+    analysis?.requiere_revision_humana === 'SI' ||
+    (typeof analysis?.confianza === 'number' && analysis.confianza < 70);
+
+  if (isInsufficient) {
+    return undefined;
+  }
+
+  const text = `${record.descripcion_original || ''} ${record.resumen_original || ''}`
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  if (text.trim().length < 10) {
+    return undefined;
+  }
+
+  // SOLICITUD (ajustes no monetarios) — explicit commercial/administrative non-monetary cases
+  const isCommercialManagementFee =
+    (cat.includes('CUOTA') && cat.includes('MANEJO')) &&
+    (sub.includes('EXONERACION') ||
+      sub.includes('BENEFICIO') ||
+      sub.includes('ACLARACION') ||
+      text.includes('exonerac') ||
+      text.includes('reconocimiento comercial') ||
+      text.includes('beneficio comercial') ||
+      text.includes('prometieron'));
+
+  if (isCommercialManagementFee) {
+    return 'Solicitud';
+  }
+
+  const isExplicitSolicitudCategory =
+    cat === 'INFORMACION Y DOCUMENTOS' ||
+    cat === 'CANALES DIGITALES' ||
+    cat === 'ACTUALIZACION DE DATOS' ||
+    cat === 'PRODUCTOS' ||
+    cat === 'SERVICIO / ATENCION' ||
+    (cat === 'GMF' && (sub.includes('MARCACION') || sub.includes('DESMARCACION'))) ||
+    (cat === 'CDT' &&
+      (sub.includes('CERTIFICADO') ||
+        sub.includes('VISUALIZACION') ||
+        sub.includes('APERTURA') ||
+        sub.includes('CANCELACION') ||
+        sub.includes('RENOVACION'))) ||
+    (cat === 'TARJETAS' &&
+      (sub.includes('DIFERIDOS') ||
+        sub.includes('PLASTICO') ||
+        sub.includes('CUPO') ||
+        sub.includes('MILLAS'))) ||
+    (cat === 'CREDITOS / CARTERA' &&
+      (sub.includes('REAPLICACIONES') ||
+        sub.includes('ENDOSO') ||
+        sub.includes('CAMBIO DE FECHA') ||
+        sub.includes('HISTORICO DE PAGO') ||
+        sub.includes('PLAN DE PAGOS') ||
+        sub.includes('TITULARES') ||
+        sub.includes('ESTADO DE OBLIGACION')));
+
+  // RECLAMO (ajustes monetarios) — disputed charges, double billing, refunds, undue debits, GT5, credit balances
+  const hasMonetaryDisputeSignal =
+    cat === 'GT5' ||
+    cat === 'FRAUDES' ||
+    cat === 'HONORARIOS Y GASTOS DE COBRANZA' ||
+    (cat === 'GMF' && (sub.includes('DEVOLUCION') || sub.includes('COBRO'))) ||
+    (cat === 'CREDITOS / CARTERA' && sub.includes('REVERSION')) ||
+    (cat === 'CUOTAS DE MANEJO' &&
+      (sub.includes('DUPLICADO') ||
+        sub.includes('POSTERIOR A CANCELACION') ||
+        sub.includes('NO RECONOCIDO') ||
+        sub.includes('DEVOLUCION'))) ||
+    (cat === 'SEGUROS' &&
+      (text.includes('no autoriz') ||
+        text.includes('descontando') ||
+        text.includes('devolucion') ||
+        text.includes('reintegro'))) ||
+    text.includes('cobro doble') ||
+    text.includes('cobro duplicado') ||
+    text.includes('doble cobro') ||
+    text.includes('cobro de mas') ||
+    text.includes('cobraron de mas') ||
+    text.includes('descuento indebido') ||
+    text.includes('cobro indebido') ||
+    text.includes('recobro') ||
+    text.includes('saldo a favor') ||
+    text.includes('saldos a favor') ||
+    text.includes('ajuste a cuenta') ||
+    text.includes('cargo cuenta dia') ||
+    text.includes('devolucion del dinero') ||
+    text.includes('devuelvan el dinero') ||
+    text.includes('reversion inmediata') ||
+    text.includes('reintegro') ||
+    text.includes('fue debitado') ||
+    text.includes('no reconoce una compra') ||
+    text.includes('no reconozco') ||
+    text.includes('intereses de mora') ||
+    text.includes('injustificado');
+
+  if (hasMonetaryDisputeSignal && !isExplicitSolicitudCategory) {
+    return 'Reclamo';
+  }
+
+  if (isExplicitSolicitudCategory) {
+    return 'Solicitud';
+  }
+
+  // Remaining monetary vs non-monetary heuristics for general categories (PSE, PAGOS / ABONOS, COMISIONES, etc.)
+  const hasSolicitudSignal =
+    text.includes('certificado') ||
+    text.includes('paz y salvo') ||
+    text.includes('consulta') ||
+    text.includes('informacion') ||
+    text.includes('reaplicacion') ||
+    text.includes('reaplicar') ||
+    text.includes('diferido') ||
+    text.includes('rediferir') ||
+    text.includes('pago extraordinario') ||
+    text.includes('abono extraordinario') ||
+    text.includes('marcacion') ||
+    text.includes('exenta') ||
+    text.includes('felicitar') ||
+    text.includes('agradecer') ||
+    text.includes('copia del contrato') ||
+    text.includes('extracto') ||
+    text.includes('validar la aplicacion') ||
+    text.includes('aplicacion del pago') ||
+    text.includes('comision');
+
+  if (hasSolicitudSignal) {
+    return 'Solicitud';
+  }
+
+  if (
+    cat === 'COMISIONES Y COBROS' ||
+    cat === 'CUOTAS DE MANEJO' ||
+    cat === 'CONDICIONES' ||
+    cat === 'SEGUROS' ||
+    cat === 'PSE'
+  ) {
+    return 'Reclamo';
+  }
+
+  return 'Solicitud';
+}
 
 export interface PQRInputRecord {
   numero_expediente: string;
@@ -17,6 +310,8 @@ export interface PQRClassificationResult {
   expediente: string;
   categoria_principal: string;
   subcategoria: string;
+  tipo_caso?: TipoCasoSFC;
+  sentimiento?: SentimientoPQR;
   resumen_requerimiento: string; // Max 20 words
   intencion_cliente: string;
   confianza: number;
@@ -29,61 +324,26 @@ export interface PQRClassificationResult {
   solicitud_cliente: string;
   evidencia_textual: string;
   propuesta_respuesta?: string;
-  fecha_pago?: string;
-  valor_pago?: string;
-  pagos_detectados?: {
-    fecha?: string;
-    valor?: string;
-    descripcion?: string;
-    confianza?: string;
-  }[];
+  origen_clasificacion?: OrigenClasificacion;
+  segunda_validacion_otras?: SegundaValidacionOtrasInfo;
 }
 
-/**
- * Extracts and normalizes TIPO ORIGEN from record or additional columns.
- * Strictly adheres to the rule of not using description or summary to guess origin.
- */
-export function extractTipoOrigen(record: PQRInputRecord): string {
-  if (record.tipo_origen && String(record.tipo_origen).trim().length > 0) {
-    return String(record.tipo_origen).trim();
-  }
-  if (record.columnas_adicionales) {
-    // Check direct known column keys first
-    const directKeys = [
-      'TIPO ORIGEN', 'tipo_origen', 'Tipo Origen', 'TIPO_ORIGEN', 'tipo origen',
-      'ORIGEN', 'origen', 'CANAL_ORIGEN', 'canal_origen', 'CANAL ORIGEN'
-    ];
-    for (const k of directKeys) {
-      if (record.columnas_adicionales[k] !== undefined && record.columnas_adicionales[k] !== null) {
-        const val = String(record.columnas_adicionales[k]).trim();
-        if (val.length > 0) return val;
-      }
-    }
-    // Search by normalized alphanumeric key
-    for (const [key, val] of Object.entries(record.columnas_adicionales)) {
-      const cleanKey = key.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
-      if (cleanKey === 'tipoorigen' || cleanKey === 'origen' || cleanKey === 'canalorigen') {
-        if (val !== null && val !== undefined) {
-          const s = String(val).trim();
-          if (s.length > 0) return s;
-        }
-      }
-    }
-  }
-  return '';
-}
+export const ETIQUETA_MENCIONA_ITAU = 'Menciona Itaú';
 
 /**
- * Normalizes uppercase, lowercase, accents and spaces to compare against ITAU.
+ * Informational-only tag detector: checks whether the customer description
+ * mentions "Itaú" or "Itau". Never alters category, product, confidence or review.
  */
-export function isTipoOrigenItau(val?: any): boolean {
-  if (val === null || val === undefined) return false;
-  const clean = String(val)
-    .trim()
+export function detectMencionaItau(descripcion?: string): boolean {
+  if (!descripcion || typeof descripcion !== 'string') return false;
+  const clean = descripcion
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase();
-  return clean === 'ITAU';
+    .replace(/[\u0300-\u036f]/g, '');
+  return /\bitau\b/i.test(clean);
+}
+
+export function getInformationalTags(descripcion?: string): string[] {
+  return detectMencionaItau(descripcion) ? [ETIQUETA_MENCIONA_ITAU] : [];
 }
 
 /**
@@ -451,26 +711,6 @@ function generateConciseSummary(
 export function normalizeCategoryName(raw: string): { categoria_principal: string; subcategoria: string } {
   if (!raw) return { categoria_principal: 'OTRAS', subcategoria: 'CASOS ATÍPICOS' };
   const clean = raw.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-  // 0. PAGO A ITAU
-  if (clean.includes('PAGO A ITAU') || clean.includes('PAGO ITAU')) {
-    if (clean.includes('TRANSFERENCIA') || clean.includes('ABONADA')) {
-      return { categoria_principal: 'PAGO A ITAU', subcategoria: 'TRANSFERENCIA NO ABONADA' };
-    }
-    if (clean.includes('COMPROBANTE') || clean.includes('REGISTRO') || clean.includes('SOPORTE')) {
-      return { categoria_principal: 'PAGO A ITAU', subcategoria: 'COMPROBANTE NO ENCONTRADO' };
-    }
-    if (clean.includes('DEMORA') || clean.includes('PENDIENTE') || clean.includes('RECHAZ')) {
-      return { categoria_principal: 'PAGO A ITAU', subcategoria: 'PAGO PENDIENTE / DEMORA' };
-    }
-    if (clean.includes('DUPLICAD') || clean.includes('PARCIAL') || clean.includes('UNO DE LOS DOS')) {
-      return { categoria_principal: 'PAGO A ITAU', subcategoria: 'PAGO DUPLICADO / PARCIAL' };
-    }
-    if (clean.includes('APLICACION') || clean.includes('APLICADO')) {
-      return { categoria_principal: 'PAGO A ITAU', subcategoria: 'APLICACIÓN DE PAGO' };
-    }
-    return { categoria_principal: 'PAGO A ITAU', subcategoria: 'PAGO NO REFLEJADO' };
-  }
 
   // 1. FRAUDES
   if (clean.includes('FRAUDE') || clean.includes('NO RECONOCID') || clean.includes('DESCONOCID') || clean.includes('SUPLANT') || clean.includes('CLONAC')) {
@@ -1761,6 +2001,41 @@ export function detectCondicionesCredito(
     return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
   }
 
+  // REGLA OBLIGATORIA (TARJETAS DE CRÉDITO):
+  // PROHIBIDO clasificar solicitudes de cancelación de tarjeta de crédito o cierre de plástico como CONDICIONES,
+  // incluso cuando el cliente mencione inconformidad o desacuerdo con las condiciones como antecedente.
+  const cardCancelCheck = detectCancelacionProductoOTarjeta(text, submotivo, detectedProduct);
+  if (cardCancelCheck.matches) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
+  }
+
+  // Operational credit card issues (blocking, plastic delivery, activation, cupo, LATAM/miles) belong to TARJETAS/PRODUCTOS, not CONDICIONES
+  const isCardOperationalIssue =
+    (full.includes('tarjeta') || full.includes('plastico') || detectedProduct === 'TARJETA DE CRÉDITO') &&
+    (
+      full.includes('bloqueo') ||
+      full.includes('bloquear') ||
+      full.includes('desbloqueo') ||
+      full.includes('no me ha llegado la tarjeta') ||
+      full.includes('no he recibido mi tarjeta') ||
+      full.includes('entrega de tarjeta') ||
+      full.includes('reposicion de tarjeta') ||
+      full.includes('activar mi tarjeta') ||
+      full.includes('activacion de tarjeta') ||
+      full.includes('millas') ||
+      full.includes('socio latam') ||
+      full.includes('latam') ||
+      full.includes('aumento de cupo') ||
+      full.includes('avances')
+    ) &&
+    !full.includes('tasa') &&
+    !full.includes('condiciones comerciales') &&
+    !full.includes('condiciones pactadas');
+
+  if (isCardOperationalIssue) {
+    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
+  }
+
   // Product resolution
   let prod = 'CRÉDITO / CARTERA';
   if (full.includes('leasing')) prod = 'LEASING';
@@ -2077,6 +2352,286 @@ export function detectCondicionesCredito(
 }
 
 /**
+ * Deep contextual detection for voluntary or pending cancellation of Credit Cards & Products.
+ * Strictly distinguishes:
+ * - Card / product cancellation & pending cancellation -> PRODUCTOS > CANCELACIÓN DE PRODUCTOS
+ * - Debt / obligation payoff ("cancelación de deuda/obligación") -> NOT card closure
+ * - Card blocking without cancellation ("bloqueo temporal/preventivo") -> TARJETAS > PLÁSTICO Y BLOQUEO
+ * - Management fee charged after prior cancellation -> CUOTAS DE MANEJO > COBRO POSTERIOR A CANCELACIÓN
+ */
+export function detectCancelacionProductoOTarjeta(
+  text: string,
+  submotivo: string,
+  detectedProduct: string
+): {
+  matches: boolean;
+  isPendingCancellation: boolean;
+  producto_detectado: string;
+  resumen: string;
+  intencion: string;
+  problema: string;
+  solicitud: string;
+  evidencia: string;
+} {
+  const lower = (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const subLower = (submotivo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const full = `${lower} ${subLower}`;
+
+  // Exclusions: CDT, Seguros, and Cuota de manejo post-cancellation have their own dedicated rules
+  if (
+    /\bcdt\b/i.test(lower) ||
+    lower.includes('certificado de deposito') ||
+    lower.includes('certificado a termino') ||
+    lower.includes('deceval')
+  ) {
+    return { matches: false, isPendingCancellation: false, producto_detectado: '', resumen: '', intencion: '', problema: '', solicitud: '', evidencia: '' };
+  }
+
+  const isSeguroCancel =
+    (lower.includes('seguro') || lower.includes('poliza')) &&
+    !lower.includes('cancelar mi tarjeta') &&
+    !lower.includes('cancelar la tarjeta') &&
+    !lower.includes('cerrar mi tarjeta') &&
+    !lower.includes('dar de baja el plastico') &&
+    !lower.includes('dar de baja mi tarjeta');
+  if (isSeguroCancel) {
+    return { matches: false, isPendingCancellation: false, producto_detectado: '', resumen: '', intencion: '', problema: '', solicitud: '', evidencia: '' };
+  }
+
+  // If the customer is complaining about a cuota de manejo charged AFTER cancelling, keep CUOTAS DE MANEJO
+  const isPostCancelManagementFee =
+    (lower.includes('cuota de manejo') || lower.includes('cuotas de manejo') || lower.includes('tarifa de manejo')) &&
+    (lower.includes('cobr') || lower.includes('devol') || lower.includes('reintegr') || lower.includes('revers')) &&
+    !lower.includes('quiero cancelar mi tarjeta') &&
+    !lower.includes('solicito cancelar mi tarjeta') &&
+    !lower.includes('deseo cerrar mi tarjeta') &&
+    !lower.includes('dar de baja el plastico') &&
+    !lower.includes('sigue activa despues de solicitar su cancelacion') &&
+    !lower.includes('no me han realizado la cancelacion') &&
+    !lower.includes('confirmar que mi tarjeta quedo cancelada');
+  if (isPostCancelManagementFee) {
+    return { matches: false, isPendingCancellation: false, producto_detectado: '', resumen: '', intencion: '', problema: '', solicitud: '', evidencia: '' };
+  }
+
+  // Exclude debt/obligation payoff ("cancelación de deuda / obligación / pago total del crédito")
+  const isDebtPayoff =
+    (lower.includes('cancelacion de la deuda') ||
+      lower.includes('cancelacion de mi deuda') ||
+      lower.includes('cancelacion de deuda') ||
+      lower.includes('cancelacion de la obligacion') ||
+      lower.includes('cancelacion de mi obligacion') ||
+      lower.includes('cancelacion de obligacion') ||
+      lower.includes('cancelacion total del credito') ||
+      lower.includes('cancelar la deuda') ||
+      lower.includes('cancelar mi deuda') ||
+      lower.includes('cancelar la obligacion') ||
+      lower.includes('cancelar el saldo total') ||
+      lower.includes('cancelar la totalidad del credito') ||
+      lower.includes('paz y salvo por cancelacion de la deuda')) &&
+    !lower.includes('cancelar mi tarjeta') &&
+    !lower.includes('cancelar la tarjeta') &&
+    !lower.includes('cerrar mi tarjeta') &&
+    !lower.includes('dar de baja el plastico');
+  if (isDebtPayoff) {
+    return { matches: false, isPendingCancellation: false, producto_detectado: '', resumen: '', intencion: '', problema: '', solicitud: '', evidencia: '' };
+  }
+
+  // Exclude automatic debit cancellation ("cancelar el débito automático") -> belongs to PAGOS / ABONOS > DÉBITOS AUTOMÁTICOS
+  const isAutoDebitCancel =
+    (lower.includes('debito automatico') || lower.includes('domiciliacion')) &&
+    !lower.includes('cancelar mi tarjeta') &&
+    !lower.includes('cancelar la tarjeta') &&
+    !lower.includes('cancelar mi cuenta') &&
+    !lower.includes('cancelar la cuenta') &&
+    !lower.includes('cerrar mi cuenta') &&
+    !lower.includes('cerrar la cuenta');
+  if (isAutoDebitCancel) {
+    return { matches: false, isPendingCancellation: false, producto_detectado: '', resumen: '', intencion: '', problema: '', solicitud: '', evidencia: '' };
+  }
+
+  // Exclude pure blocking without cancellation intent
+  const hasCancelSignal =
+    lower.includes('cancelar') ||
+    lower.includes('cancelacion') ||
+    lower.includes('cancelada') ||
+    lower.includes('cancelado') ||
+    lower.includes('cerrar mi tarjeta') ||
+    lower.includes('cerrar la tarjeta') ||
+    lower.includes('cerrar mi cuenta') ||
+    lower.includes('cerrar la cuenta') ||
+    lower.includes('cierre de tarjeta') ||
+    lower.includes('cierre de mi tarjeta') ||
+    lower.includes('cierre de cuenta') ||
+    lower.includes('cierre de producto') ||
+    lower.includes('dar de baja') ||
+    lower.includes('no deseo continuar con el producto') ||
+    lower.includes('no deseo continuar con la tarjeta') ||
+    lower.includes('no quiero continuar con el producto') ||
+    lower.includes('no quiero continuar con la tarjeta') ||
+    lower.includes('no continuar con la tarjeta') ||
+    lower.includes('no continuar con el producto') ||
+    lower.includes('terminar el producto') ||
+    lower.includes('terminar con el producto') ||
+    lower.includes('terminar con mi tarjeta') ||
+    lower.includes('terminar contrato') ||
+    lower.includes('terminacion del producto') ||
+    lower.includes('terminacion de tarjeta');
+
+  if (!hasCancelSignal) {
+    return { matches: false, isPendingCancellation: false, producto_detectado: '', resumen: '', intencion: '', problema: '', solicitud: '', evidencia: '' };
+  }
+
+  const mentionsCard =
+    lower.includes('tarjeta') ||
+    lower.includes('plastico') ||
+    lower.includes('visa') ||
+    lower.includes('mastercard') ||
+    lower.includes('amex') ||
+    subLower.includes('tarjeta') ||
+    detectedProduct === 'TARJETA DE CRÉDITO' ||
+    detectedProduct === 'TARJETA DÉBITO';
+
+  const mentionsAccountOrProduct =
+    lower.includes('cuenta') ||
+    lower.includes('producto') ||
+    lower.includes('contrato');
+
+  // Explicit card cancellation expressions (even without repeating "tarjeta" when product context confirms card/product)
+  const isExplicitCardOrProductCancel =
+    lower.includes('quiero cancelar mi tarjeta') ||
+    lower.includes('solicito cancelar mi tarjeta') ||
+    lower.includes('solicito la cancelacion de mi tarjeta') ||
+    lower.includes('solicito la cancelacion de la tarjeta') ||
+    lower.includes('deseo cancelar mi tarjeta') ||
+    lower.includes('deseo cerrar mi tarjeta') ||
+    lower.includes('quiero cerrar mi tarjeta') ||
+    lower.includes('cerrar mi tarjeta') ||
+    lower.includes('cerrar la tarjeta') ||
+    lower.includes('dar de baja el plastico') ||
+    lower.includes('dar de baja mi tarjeta') ||
+    lower.includes('dar de baja la tarjeta') ||
+    lower.includes('dar de baja el producto') ||
+    lower.includes('no deseo continuar con el producto') ||
+    lower.includes('no quiero continuar con el producto') ||
+    lower.includes('no deseo continuar con la tarjeta') ||
+    lower.includes('no quiero continuar con la tarjeta') ||
+    lower.includes('solicito terminar el producto') ||
+    lower.includes('terminar el producto') ||
+    lower.includes('terminar con mi tarjeta') ||
+    lower.includes('llevo tiempo solicitando la cancelacion') ||
+    lower.includes('sigue activa despues de solicitar su cancelacion') ||
+    lower.includes('continua activa despues de solicitar su cancelacion') ||
+    lower.includes('sigue activa') && lower.includes('cancelac') ||
+    lower.includes('continua activa') && lower.includes('cancelac') ||
+    lower.includes('no me han realizado la cancelacion') ||
+    lower.includes('no han realizado la cancelacion') ||
+    lower.includes('no me han cancelado la tarjeta') ||
+    lower.includes('no han cancelado mi tarjeta') ||
+    lower.includes('confirmar que mi tarjeta quedo cancelada') ||
+    lower.includes('confirmacion de que mi tarjeta quedo cancelada') ||
+    lower.includes('confirmacion de cancelacion') && (mentionsCard || mentionsAccountOrProduct) ||
+    ((lower.includes('cancelar') || lower.includes('cancelacion') || lower.includes('cierre')) && (mentionsCard || mentionsAccountOrProduct));
+
+  if (!isExplicitCardOrProductCancel) {
+    return { matches: false, isPendingCancellation: false, producto_detectado: '', resumen: '', intencion: '', problema: '', solicitud: '', evidencia: '' };
+  }
+
+  // Avoid catching credit installment/payment complaints that happen to say "cancelar la cuota" (= pay the installment)
+  const isPayInstallmentUsage =
+    (lower.includes('cancelar la cuota') ||
+      lower.includes('cancelar las cuotas') ||
+      lower.includes('cancelar mi cuota') ||
+      lower.includes('cancelar el valor') ||
+      lower.includes('cancelar la factura') ||
+      lower.includes('cancele la cuota') ||
+      lower.includes('cancele el pago')) &&
+    !lower.includes('cancelar mi tarjeta') &&
+    !lower.includes('cancelar la tarjeta') &&
+    !lower.includes('cerrar mi tarjeta') &&
+    !lower.includes('dar de baja');
+  if (isPayInstallmentUsage) {
+    return { matches: false, isPendingCancellation: false, producto_detectado: '', resumen: '', intencion: '', problema: '', solicitud: '', evidencia: '' };
+  }
+
+  const isPending =
+    lower.includes('llevo tiempo solicitando') ||
+    lower.includes('sigue activa') ||
+    lower.includes('continua activa') ||
+    lower.includes('no me han realizado la cancelacion') ||
+    lower.includes('no han realizado la cancelacion') ||
+    lower.includes('no me han cancelado') ||
+    lower.includes('no han cancelado') ||
+    lower.includes('confirmar que mi tarjeta quedo cancelada') ||
+    lower.includes('confirmacion de cancelacion');
+
+  let prod = detectedProduct;
+  if (lower.includes('tarjeta de credito') || lower.includes('tarjeta credito') || (mentionsCard && !lower.includes('debito'))) {
+    prod = 'TARJETA DE CRÉDITO';
+  } else if (lower.includes('tarjeta debito') || lower.includes('tarjeta de debito')) {
+    prod = 'TARJETA DÉBITO';
+  } else if (lower.includes('cuenta de ahorros')) {
+    prod = 'CUENTA DE AHORROS';
+  } else if (lower.includes('cuenta corriente')) {
+    prod = 'CUENTA CORRIENTE';
+  } else if (!prod || prod === 'NO ESPECIFICADO') {
+    prod = mentionsCard ? 'TARJETA DE CRÉDITO' : 'PRODUCTO FINANCIERO';
+  }
+
+  const prodDesc = prod !== 'NO ESPECIFICADO' ? ` de ${prod.toLowerCase()}` : '';
+  const problema = isPending
+    ? `Cancelación pendiente o producto aún activo tras solicitud previa${prodDesc}`
+    : `Solicitud de cancelación definitiva y cierre${prodDesc}`;
+  const solicitud = isPending
+    ? `Completar la cancelación definitiva y confirmar el cierre${prodDesc}`
+    : `Ejecutar la cancelación definitiva y expedir constancia de cierre${prodDesc}`;
+  const resumen = generateConciseSummary(
+    text,
+    'PRODUCTOS',
+    'CANCELACIÓN DE PRODUCTOS',
+    prod,
+    isPending
+      ? `Cliente reclama cancelación pendiente${prodDesc} que continúa activa y solicita confirmar su cierre.`
+      : `Cliente solicita la cancelación definitiva y cierre${prodDesc}.`
+  );
+
+  // Extract targeted snippet around cancellation phrase
+  const kws = [
+    'sigue activa',
+    'no me han realizado la cancelacion',
+    'confirmar que mi tarjeta quedo cancelada',
+    'dar de baja',
+    'no deseo continuar',
+    'terminar el producto',
+    'cerrar mi tarjeta',
+    'cancelacion',
+    'cancelar'
+  ];
+  let evidencia = text.slice(0, 110).trim();
+  for (const kw of kws) {
+    const pos = lower.indexOf(kw);
+    if (pos !== -1) {
+      const start = Math.max(0, pos - 25);
+      const end = Math.min(text.length, pos + kw.length + 60);
+      evidencia = text.slice(start, end).trim();
+      break;
+    }
+  }
+
+  return {
+    matches: true,
+    isPendingCancellation: isPending,
+    producto_detectado: prod,
+    resumen,
+    intencion: isPending
+      ? `Completar y confirmar cancelación pendiente${prodDesc}`
+      : `Cancelar o cerrar definitivamente${prodDesc}`,
+    problema,
+    solicitud,
+    evidencia
+  };
+}
+
+/**
  * Deep contextual detection and subcategorization for CRÉDITOS / CARTERA
  * Supporting all 10 official subcategories:
  * 1. PLAN DE PAGOS
@@ -2121,10 +2676,19 @@ export function detectCreditoCartera(
     return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
   }
 
-  // Credit card payment issues belong to PAGOS / ABONOS or PAGO A ITAU, not CRÉDITOS / CARTERA
+  // Credit card payment/abono issues belong to PAGOS / ABONOS, not CRÉDITOS / CARTERA
   const isCreditCardPayment =
     (full.includes('tarjeta de credito') || full.includes('tarjeta credito') || detectedProduct === 'TARJETA DE CRÉDITO') &&
-    (full.includes('pago de la tarjeta') || full.includes('pago de mi tarjeta') || full.includes('pague mi tarjeta') || full.includes('pago de tarjeta')) &&
+    (full.includes('pago de la tarjeta') ||
+      full.includes('pago de mi tarjeta') ||
+      full.includes('pague mi tarjeta') ||
+      full.includes('pago de tarjeta') ||
+      full.includes('abono a mi tarjeta') ||
+      full.includes('abono a la tarjeta') ||
+      full.includes('abono de mi tarjeta') ||
+      full.includes('abono de tarjeta') ||
+      full.includes('abono en mi tarjeta') ||
+      full.includes('abono a tarjeta')) &&
     !full.includes('credito de vivienda') && !full.includes('leasing') && !full.includes('libranza') && !full.includes('prestamo') && !full.includes('cartera') && !full.includes('frech');
 
   if (isCreditCardPayment) {
@@ -2221,6 +2785,27 @@ export function detectCreditoCartera(
       resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'ENDOSO', prod, 'Solicita trámite, actualización o información sobre endoso de póliza.'),
       evidencia,
       producto_detectado: prod
+    };
+  }
+
+  // 1.5 IMPUESTO PREDIAL (Vivienda / Leasing / Crédito Hipotecario)
+  const isImpuestoPredial =
+    full.includes('impuesto predial') ||
+    (full.includes('predial') && (full.includes('leasing') || full.includes('vivienda') || full.includes('hipotecari') || full.includes('inmueble') || full.includes('credito')));
+  if (isImpuestoPredial) {
+    const kws = ['impuesto predial', 'predial'];
+    const evidencia = extractEvidence(kws);
+    const subPredial = (full.includes('plan de pagos') || full.includes('cuota')) ? 'PLAN DE PAGOS' : 'ESTADO DE OBLIGACIÓN / SALDOS';
+    const prodPredial = full.includes('leasing') ? 'LEASING' : 'CRÉDITO DE VIVIENDA';
+    return {
+      matches: true,
+      subcategoria: subPredial,
+      intencion: 'Reclamación o solicitud sobre cobro, pago o aplicación de impuesto predial asociado al inmueble financiado',
+      problema: `Inconveniente con impuesto predial asociado a ${prodPredial.toLowerCase()}`,
+      solicitud: 'Verificación, soporte o ajuste del cobro o pago de impuesto predial de la obligación',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', subPredial, prodPredial, 'Reclama o solicita revisión sobre el impuesto predial asociado a su obligación.'),
+      evidencia,
+      producto_detectado: prodPredial
     };
   }
 
@@ -2327,7 +2912,21 @@ export function detectCreditoCartera(
     full.includes('cuota equivocada') ||
     full.includes('imputacion del pago') ||
     full.includes('imputacion de pago') ||
-    full.includes('corregir la aplicacion de mi abono');
+    full.includes('corregir la aplicacion de mi abono') ||
+    ((full.includes('abono') || full.includes('pago')) &&
+      (full.includes('aplicado incorrectamente') ||
+        full.includes('aplicaron incorrectamente') ||
+        full.includes('mal aplicado') ||
+        full.includes('aplicacion incorrecta')) &&
+      ((full.includes('credito') && !full.includes('tarjeta de credito') && !full.includes('tarjeta credito')) ||
+        full.includes('prestamo') ||
+        full.includes('vivienda') ||
+        full.includes('leasing') ||
+        full.includes('libranza') ||
+        full.includes('cartera') ||
+        full.includes('capital') ||
+        full.includes('intereses') ||
+        full.includes('cuota')));
   if (isReaplicacion) {
     const kws = ['reaplicar', 'reaplicacion', 'reaplicaciones', 'abono a capital', 'pago a capital', 'reduccion de la cuota', 'cobertura de cuota', 'imputacion del pago'];
     const evidencia = extractEvidence(kws);
@@ -2483,8 +3082,10 @@ export function detectCreditoCartera(
      full.includes('reversar') ||
      full.includes('reversion del pago') ||
      full.includes('reversion de pago') ||
+     full.includes('reversion de un pago') ||
      full.includes('devolucion del pago') ||
      full.includes('devolucion de pago') ||
+     full.includes('devolucion de un pago') ||
      full.includes('reversion de debito automatico') ||
      full.includes('devolucion de debito automatico') ||
      full.includes('reversar debito automatico') ||
@@ -2670,7 +3271,7 @@ export function detectCreditoCartera(
     full.includes('revisar las cuotas') ||
     full.includes('revisar cuotas');
 
-  if (hasGenericCreditTerm && hasGenericInstallment) {
+  if (hasGenericCreditTerm && hasGenericInstallment && !isPaymentUnappliedIssue(text)) {
     const kws = ['cuota del credito', 'cuota mensual', 'cuotas', 'cuota', 'credito'];
     const evidencia = extractEvidence(kws);
     return {
@@ -3398,97 +3999,6 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   }
 
   // =========================================================================
-  // REGLA OBLIGATORIA: PAGO A ITAU (FILTRO OBLIGATORIO TIPO ORIGEN = ITAU)
-  // Procesa esta regla exclusivamente para expedientes cuya columna TIPO ORIGEN
-  // corresponda a ITAU (normalizando mayúsculas, minúsculas y espacios).
-  // No utiliza la descripción ni el resumen para saltarse el filtro.
-  // No cambia la clasificación de expedientes cuyo TIPO ORIGEN sea diferente de ITAU.
-  // =========================================================================
-  const tipoOrigenVal = extractTipoOrigen(record);
-  const isItau = isTipoOrigenItau(tipoOrigenVal);
-
-  if (isItau && isPaymentUnappliedIssue(rawText)) {
-    let sub = 'PAGO NO REFLEJADO';
-    let intencion = 'Acreditación y reflejo de pago realizado en Itaú';
-    let problema = 'Pago realizado a Itaú no reflejado en el saldo o tarjeta';
-    let solicitud = 'Aplicación y reflejo oportuno del pago en la obligación';
-
-    if (
-      lower.includes('transferencia') &&
-      (lower.includes('no aparece abonada') || lower.includes('no abonada') || lower.includes('no acreditada') || lower.includes('no se ve reflejada') || lower.includes('no aparece'))
-    ) {
-      sub = 'TRANSFERENCIA NO ABONADA';
-      intencion = 'Acreditación de transferencia realizada a Itaú';
-      problema = 'Transferencia enviada que no aparece abonada a la cuenta o tarjeta';
-      solicitud = 'Abonar la transferencia realizada en la obligación';
-    } else if (
-      (lower.includes('no encuentro') || lower.includes('no tengo') || lower.includes('solicito')) &&
-      (lower.includes('comprobante') || lower.includes('registro') || lower.includes('soporte'))
-    ) {
-      sub = 'COMPROBANTE NO ENCONTRADO';
-      intencion = 'Ubicación y envío de comprobante o registro del pago realizado';
-      problema = 'Inconvenientes para ubicar o visualizar comprobante del pago';
-      solicitud = 'Envío de soporte y comprobante del pago realizado';
-    } else if (
-      lower.includes('pago rechazado') ||
-      lower.includes('fue rechazado') ||
-      lower.includes('demora en su aplicacion') ||
-      lower.includes('demora en la aplicacion') ||
-      lower.includes('demora del pago') ||
-      lower.includes('retraso en el pago') ||
-      lower.includes('tardanza en el pago')
-    ) {
-      sub = 'PAGO PENDIENTE / DEMORA';
-      intencion = 'Solución a pago rechazado o demora en aplicación a Itaú';
-      problema = 'Pago rechazado o con demora excesiva en su aplicación';
-      solicitud = 'Aclaración de motivo de demora o rechazo y aplicación del pago';
-    } else if (
-      lower.includes('solo aparece uno') ||
-      lower.includes('uno de los dos') ||
-      lower.includes('pago duplicado') ||
-      lower.includes('doble pago')
-    ) {
-      sub = 'PAGO DUPLICADO / PARCIAL';
-      intencion = 'Revisión de pagos múltiples o aplicación parcial a Itaú';
-      problema = 'Solo aparece uno de los pagos o cobro doble registrado';
-      solicitud = 'Aplicar todos los pagos realizados o corregir duplicidad';
-    } else if (
-      lower.includes('no se ha aplicado') ||
-      lower.includes('no ha sido aplicado') ||
-      lower.includes('no aplicado') ||
-      lower.includes('no aplicada') ||
-      lower.includes('sin aplicar') ||
-      lower.includes('pendiente de aplicacion') ||
-      lower.includes('pendiente de aplicar') ||
-      lower.includes('a la obligacion')
-    ) {
-      sub = 'APLICACIÓN DE PAGO';
-      intencion = 'Aplicación efectiva de pago pendiente a la obligación Itaú';
-      problema = 'Pago realizado debitado o pendiente de aplicar a la obligación';
-      solicitud = 'Aplicar el valor pagado a la obligación pendiente';
-    }
-
-    const paymentInfo = extractItauPaymentDetails(rawText, tipoOrigenVal, 'PAGO A ITAU');
-
-    return {
-      expediente,
-      categoria_principal: 'PAGO A ITAU',
-      subcategoria: sub,
-      resumen_requerimiento: generateConciseSummary(rawText, 'PAGO A ITAU', sub, detectedProduct, `Cliente Itaú reporta inconveniente con pago realizado no aplicado o no reflejado.`),
-      intencion_cliente: intencion,
-      confianza: 98,
-      requiere_revision_humana: false,
-      producto_detectado: detectedProduct !== 'NO ESPECIFICADO' ? detectedProduct : 'TARJETA DE CRÉDITO',
-      problema_principal: problema,
-      solicitud_cliente: solicitud,
-      evidencia_textual: rawText.slice(0, 100),
-      fecha_pago: paymentInfo.fecha_pago,
-      valor_pago: paymentInfo.valor_pago,
-      pagos_detectados: paymentInfo.pagos
-    };
-  }
-
-  // =========================================================================
   // PRIORIDAD 3: CDT
   // Únicamente si hace referencia explícita e inequívoca a un Certificado de Depósito a Término.
   // La palabra "cuenta" NUNCA es CDT.
@@ -3727,6 +4237,30 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     }
   }
 
+  // 6.25 REGLA PRIORITARIA TARJETAS / PRODUCTOS: CANCELACIÓN DE TARJETA DE CRÉDITO O PRODUCTO
+  // Tiene prioridad absoluta sobre CONDICIONES cuando el cliente solicita cancelar, cerrar o dar de baja la tarjeta/producto,
+  // incluso si menciona inconformidad con condiciones como antecedente.
+  const cancelProductoRes = detectCancelacionProductoOTarjeta(
+    rawText,
+    record.submotivo_original || record.resumen_original || '',
+    detectedProduct
+  );
+  if (cancelProductoRes.matches && !cuotaRes.matches && !cobranzaRes.matches) {
+    return {
+      expediente,
+      categoria_principal: 'PRODUCTOS',
+      subcategoria: 'CANCELACIÓN DE PRODUCTOS',
+      resumen_requerimiento: cancelProductoRes.resumen,
+      intencion_cliente: cancelProductoRes.intencion,
+      confianza: 97,
+      requiere_revision_humana: false,
+      producto_detectado: cancelProductoRes.producto_detectado,
+      problema_principal: cancelProductoRes.problema,
+      solicitud_cliente: cancelProductoRes.solicitud,
+      evidencia_textual: cancelProductoRes.evidencia
+    };
+  }
+
   // 6.3 CONDICIONES (CARTERA / CRÉDITOS)
   if (condicionesRes.matches) {
     return {
@@ -3907,8 +4441,9 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // 8.2 TARJETA / PAGOS: Pagos no aplicados, no reflejados o duplicados
-  const hasPaymentWord = lower.includes('pago') || lower.includes('abono');
+  // 8.2 TARJETA / PAGOS: Pagos no aplicados, no reflejados, demorados o duplicados
+  const isTransferOnly = lower.includes('transferencia') || lower.includes('transferi');
+  const hasPaymentWord = lower.includes('pago') || lower.includes('pague') || lower.includes('pagos') || lower.includes('abono');
   const hasReflectionOrDuplicateIssue =
     lower.includes('no se ve reflejado') ||
     lower.includes('no veo reflejado') ||
@@ -3921,27 +4456,70 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     lower.includes('doble pago') ||
     lower.includes('doble cobro') ||
     lower.includes('pago incorrecto') ||
-    lower.includes('abono mal aplicado');
+    lower.includes('abono mal aplicado') ||
+    lower.includes('aplicado incorrectamente') ||
+    lower.includes('aplicaron incorrectamente') ||
+    lower.includes('mal aplicado') ||
+    lower.includes('aplicacion incorrecta');
+
+  const isDebitoAutomaticoPago =
+    lower.includes('debito automatico') ||
+    lower.includes('domiciliacion') ||
+    lower.includes('domiciliar');
+
+  const isPagoRecaudoConvenio =
+    lower.includes('convenio') ||
+    lower.includes('servicio publico') ||
+    lower.includes('servicios publicos') ||
+    lower.includes('recaudo') ||
+    (lower.includes('factura') &&
+      (lower.includes('energia') ||
+        lower.includes('agua') ||
+        lower.includes('gas') ||
+        lower.includes('internet') ||
+        lower.includes('celular') ||
+        lower.includes('telefono') ||
+        lower.includes('servicio')));
 
   const isPaymentIssue =
     (hasPaymentWord && hasReflectionOrDuplicateIssue) ||
+    (!isTransferOnly && isPaymentUnappliedIssue(rawText)) ||
+    isDebitoAutomaticoPago ||
+    (hasPaymentWord && isPagoRecaudoConvenio) ||
     lower.includes('pago no aplicado') ||
     lower.includes('pago duplicado') ||
     lower.includes('debito duplicado del pago');
 
   if (isPaymentIssue) {
     const prodDesc = detectedProduct !== 'NO ESPECIFICADO' ? ` de ${detectedProduct.toLowerCase()}` : '';
+    const subPago = isDebitoAutomaticoPago
+      ? 'DÉBITOS AUTOMÁTICOS'
+      : isPagoRecaudoConvenio
+        ? 'PAGOS Y RECAUDOS'
+        : 'APLICACIÓN DE PAGO';
+    const problemaPago =
+      subPago === 'DÉBITOS AUTOMÁTICOS'
+        ? `Gestión o novedad en débito automático${prodDesc}`
+        : subPago === 'PAGOS Y RECAUDOS'
+          ? `Inconveniente con pago de factura, convenio o servicio público${prodDesc}`
+          : `Pago${prodDesc} no aplicado, mal aplicado, duplicado o pendiente de reflejar`;
+    const solicitudPago =
+      subPago === 'DÉBITOS AUTOMÁTICOS'
+        ? 'Inscripción, cancelación o revisión del débito automático'
+        : subPago === 'PAGOS Y RECAUDOS'
+          ? 'Validación y aplicación del pago de convenio o factura realizada'
+          : 'Aplicación correcta y actualización de saldo del pago realizado';
     return {
       expediente,
       categoria_principal: 'PAGOS / ABONOS',
-      subcategoria: 'APLICACIÓN DE PAGO',
-      resumen_requerimiento: generateConciseSummary(rawText, 'PAGOS / ABONOS', 'APLICACIÓN DE PAGO', detectedProduct, `Cliente reclama por pago${prodDesc} no aplicado o duplicado.`),
-      intencion_cliente: 'Aplicación o corrección de pago realizado a la obligación',
+      subcategoria: subPago,
+      resumen_requerimiento: generateConciseSummary(rawText, 'PAGOS / ABONOS', subPago, detectedProduct, `Cliente reporta novedad en ${subPago.toLowerCase()}${prodDesc}.`),
+      intencion_cliente: solicitudPago,
       confianza: 97,
       requiere_revision_humana: false,
       producto_detectado: detectedProduct,
-      problema_principal: `Pago${prodDesc} no aplicado, duplicado o pendiente de reflejar`,
-      solicitud_cliente: 'Aplicación correcta y actualización de saldo del pago realizado',
+      problema_principal: problemaPago,
+      solicitud_cliente: solicitudPago,
       evidencia_textual: rawText.slice(0, 100)
     };
   }
@@ -3981,9 +4559,14 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     lower.includes('incremento de cupo') ||
     lower.includes('ampliacion de cupo') ||
     lower.includes('disminucion de cupo') ||
+    lower.includes('redujeron el cupo') ||
+    lower.includes('bajaron el cupo') ||
+    lower.includes('disminuyeron el cupo') ||
     lower.includes('bajar cupo') ||
     lower.includes('sobrecupo') ||
     lower.includes('cupo no disponible') ||
+    lower.includes('cupo disponible') ||
+    lower.includes('cupo asignado') ||
     lower.includes('diferencia en cupo') ||
     lower.includes('cupo de la tarjeta') ||
     lower.includes('cupo de mi tarjeta') ||
@@ -4090,24 +4673,25 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // 8.8 PRODUCTOS: CANCELACIÓN VOLUNTARIA
-  if (
-    (lower.includes('cancel') || lower.includes('cierre') || lower.includes('terminar contrato')) &&
-    (lower.includes('tarjeta') || lower.includes('cuenta') || lower.includes('credito') || lower.includes('producto'))
-  ) {
-    const prodDesc = detectedProduct !== 'NO ESPECIFICADO' ? ` de ${detectedProduct.toLowerCase()}` : '';
+  // 8.8 PRODUCTOS: CANCELACIÓN VOLUNTARIA O PENDIENTE
+  const cancelFallbackRes = detectCancelacionProductoOTarjeta(
+    rawText,
+    record.submotivo_original || record.resumen_original || '',
+    detectedProduct
+  );
+  if (cancelFallbackRes.matches) {
     return {
       expediente,
       categoria_principal: 'PRODUCTOS',
       subcategoria: 'CANCELACIÓN DE PRODUCTOS',
-      resumen_requerimiento: generateConciseSummary(rawText, 'PRODUCTOS', 'CANCELACIÓN DE PRODUCTOS', detectedProduct, `Cliente solicita cancelación definitiva${prodDesc}.`),
-      intencion_cliente: 'Cliente desea cancelar o cerrar definitivamente un producto',
+      resumen_requerimiento: cancelFallbackRes.resumen,
+      intencion_cliente: cancelFallbackRes.intencion,
       confianza: 96,
       requiere_revision_humana: false,
-      producto_detectado: detectedProduct,
-      problema_principal: `Cancelación voluntaria${prodDesc}`,
-      solicitud_cliente: 'Cierre y paz y salvo del producto cancelado',
-      evidencia_textual: rawText.slice(0, 100)
+      producto_detectado: cancelFallbackRes.producto_detectado,
+      problema_principal: cancelFallbackRes.problema,
+      solicitud_cliente: cancelFallbackRes.solicitud,
+      evidencia_textual: cancelFallbackRes.evidencia
     };
   }
 
@@ -4129,46 +4713,76 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // 8.10 TARJETAS: Plástico, entrega, reposición y bloqueo
+  // 8.10 TARJETAS: Plástico, entrega, reposición, renovación y bloqueo/desbloqueo
   if (
     lower.includes('entrega de tarjeta') ||
     lower.includes('envio de tarjeta') ||
     lower.includes('no me ha llegado la tarjeta') ||
+    lower.includes('no me ha llegado mi tarjeta') ||
+    lower.includes('no he recibido mi tarjeta') ||
+    lower.includes('no he recibido la tarjeta') ||
+    lower.includes('no me entregaron la tarjeta') ||
+    lower.includes('no me han entregado la tarjeta') ||
     lower.includes('tarjeta deteriorada') ||
     lower.includes('reposicion de tarjeta') ||
+    lower.includes('reposicion del plastico') ||
+    lower.includes('renovacion de tarjeta') ||
+    lower.includes('renovacion del plastico') ||
     lower.includes('reexpedicion de plastico') ||
+    lower.includes('reemplazo de tarjeta') ||
     lower.includes('bloqueo de tarjeta') ||
     lower.includes('bloqueo de plastico') ||
+    lower.includes('bloqueo preventivo') ||
+    lower.includes('bloqueo temporal') ||
+    lower.includes('bloquear mi tarjeta') ||
+    lower.includes('bloquear la tarjeta') ||
+    lower.includes('desbloquear mi tarjeta') ||
+    lower.includes('desbloquear la tarjeta') ||
+    lower.includes('desbloqueo de tarjeta') ||
+    lower.includes('tarjeta bloqueada') ||
     lower.includes('plastico')
   ) {
     return {
       expediente,
       categoria_principal: 'TARJETAS',
       subcategoria: 'PLÁSTICO Y BLOQUEO',
-      resumen_requerimiento: generateConciseSummary(rawText, 'TARJETAS', 'PLÁSTICO Y BLOQUEO', detectedProduct, `Cliente solicita gestión física, entrega o reposición de tarjeta.`),
-      intencion_cliente: 'Gestión física de plástico, entrega, deterioro o reposición',
+      resumen_requerimiento: generateConciseSummary(rawText, 'TARJETAS', 'PLÁSTICO Y BLOQUEO', detectedProduct, `Cliente solicita gestión física, entrega, bloqueo o reposición de tarjeta.`),
+      intencion_cliente: 'Gestión física de plástico, entrega, renovación, bloqueo o reposición',
       confianza: 95,
       requiere_revision_humana: false,
       producto_detectado: detectedProduct !== 'NO ESPECIFICADO' ? detectedProduct : 'TARJETA DE CRÉDITO',
-      problema_principal: 'Novedad con plástico de tarjeta (entrega, deterioro o bloqueo)',
-      solicitud_cliente: 'Envío de nuevo plástico o reposición de tarjeta',
+      problema_principal: 'Novedad con plástico de tarjeta (entrega, renovación, deterioro o bloqueo)',
+      solicitud_cliente: 'Envío, reposición, bloqueo o desbloqueo del plástico de tarjeta',
       evidencia_textual: rawText.slice(0, 100)
     };
   }
 
-  // 8.11 TARJETAS: Millas y programas de lealtad
-  if (lower.includes('milla') || lower.includes('puntos') || lower.includes('canje') || lower.includes('lealtad') || lower.includes('lifemiles') || lower.includes('cashback')) {
+  // 8.11 TARJETAS: Millas, Socio LATAM, Millas LATAM y programas de lealtad
+  if (
+    lower.includes('milla') ||
+    lower.includes('latam') ||
+    lower.includes('socio latam') ||
+    lower.includes('millas latam') ||
+    lower.includes('latampass') ||
+    lower.includes('tuplus') ||
+    lower.includes('tu plus') ||
+    lower.includes('puntos') ||
+    lower.includes('canje') ||
+    lower.includes('lealtad') ||
+    lower.includes('lifemiles') ||
+    lower.includes('cashback')
+  ) {
     return {
       expediente,
       categoria_principal: 'TARJETAS',
       subcategoria: 'MILLAS Y PROGRAMAS DE LEALTAD',
-      resumen_requerimiento: generateConciseSummary(rawText, 'TARJETAS', 'MILLAS Y PROGRAMAS DE LEALTAD', detectedProduct, `Cliente reclama acumulación o canje de millas y puntos de tarjeta.`),
-      intencion_cliente: 'Gestión o reclamo sobre millas o puntos acumulados',
+      resumen_requerimiento: generateConciseSummary(rawText, 'TARJETAS', 'MILLAS Y PROGRAMAS DE LEALTAD', detectedProduct, `Cliente reclama acumulación o canje de millas LATAM y puntos de tarjeta.`),
+      intencion_cliente: 'Gestión o reclamo sobre millas LATAM, puntos o programa de lealtad',
       confianza: 96,
       requiere_revision_humana: false,
       producto_detectado: detectedProduct !== 'NO ESPECIFICADO' ? detectedProduct : 'TARJETA DE CRÉDITO',
-      problema_principal: 'Acumulación o redención de millas y puntos del programa de lealtad',
-      solicitud_cliente: 'Acreditación de millas o puntos no reflejados',
+      problema_principal: 'Acumulación, vinculación o redención de millas LATAM y puntos del programa de lealtad',
+      solicitud_cliente: 'Acreditación o gestión de millas LATAM, socio LATAM o puntos del programa',
       evidencia_textual: rawText.slice(0, 100)
     };
   }
@@ -4190,7 +4804,8 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // 8.13 INFORMACIÓN Y DOCUMENTOS: Paz y salvo, certificaciones, copias de contrato y consultas informativas
+  // 8.13 INFORMACIÓN Y DOCUMENTOS: Paz y salvo, certificaciones, copias de contrato y consultas documentales explícitas
+  // (Un derecho de petición cuyo fondo es transferencia, pago, canal o cobro debe clasificarse por su problema principal, no solo por decir "derecho de petición")
   if (
     lower.includes('paz y salvo') ||
     lower.includes('certificacion') ||
@@ -4200,7 +4815,8 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     lower.includes('copia del contrato') ||
     lower.includes('copia pagare') ||
     lower.includes('copia de pagare') ||
-    lower.includes('derecho de peticion') ||
+    lower.includes('copia del pagare') ||
+    lower.includes('extracto') ||
     lower.includes('solicito informacion sobre mi credito') ||
     lower.includes('solicito informacion de mi credito') ||
     lower.includes('informacion sobre como funciona')
@@ -4290,16 +4906,22 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
 
   // 8.17 PAGOS / ABONOS GENERALES
   if (lower.includes('pago') || lower.includes('pague') || lower.includes('pagad') || lower.includes('abono') || lower.includes('abone') || lower.includes('consignacion') || lower.includes('recaudo')) {
+    const subGeneral =
+      lower.includes('debito automatico') || lower.includes('domiciliacion')
+        ? 'DÉBITOS AUTOMÁTICOS'
+        : lower.includes('convenio') || lower.includes('recaudo') || lower.includes('servicio publico') || lower.includes('servicios publicos')
+          ? 'PAGOS Y RECAUDOS'
+          : 'APLICACIÓN DE PAGO';
     return {
       expediente,
       categoria_principal: 'PAGOS / ABONOS',
-      subcategoria: 'APLICACIÓN DE PAGO',
-      resumen_requerimiento: generateConciseSummary(rawText, 'PAGOS / ABONOS', 'APLICACIÓN DE PAGO', detectedProduct, `Cliente solicita aplicación o revisión de pago efectuado.`),
+      subcategoria: subGeneral,
+      resumen_requerimiento: generateConciseSummary(rawText, 'PAGOS / ABONOS', subGeneral, detectedProduct, `Cliente solicita gestión de ${subGeneral.toLowerCase()}.`),
       intencion_cliente: 'Aplicación o validación de pago o abono realizado',
       confianza: 95,
       requiere_revision_humana: false,
       producto_detectado: detectedProduct,
-      problema_principal: 'Aplicación de pago o abono a producto',
+      problema_principal: 'Aplicación o gestión de pago o abono a producto',
       solicitud_cliente: 'Aplicación y reflejo del pago en el saldo',
       evidencia_textual: rawText.slice(0, 100)
     };
@@ -4323,20 +4945,71 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
   }
 
   // 8.19 SERVICIO / ATENCIÓN
-  if (lower.includes('atencion') || lower.includes('servicio') || lower.includes('asesor') || lower.includes('sucursal') || lower.includes('oficina') || lower.includes('demora')) {
-    const isTime = lower.includes('tiempo') || lower.includes('demora') || lower.includes('plazo') || lower.includes('sin respuesta');
+  if (
+    lower.includes('atencion') ||
+    lower.includes('servicio') ||
+    lower.includes('asesor') ||
+    lower.includes('sucursal') ||
+    lower.includes('oficina') ||
+    lower.includes('demora') ||
+    lower.includes('sin respuesta') ||
+    lower.includes('no me responden') ||
+    lower.includes('mal trato') ||
+    lower.includes('felicit') ||
+    lower.includes('agradec')
+  ) {
+    const isTime = lower.includes('tiempo') || lower.includes('demora') || lower.includes('plazo') || lower.includes('sin respuesta') || lower.includes('no me responden');
     const sub = isTime ? 'TIEMPOS DE RESPUESTA' : 'ATENCIÓN ASESOR Y SUCURSAL';
     return {
       expediente,
       categoria_principal: 'SERVICIO / ATENCIÓN',
       subcategoria: sub,
-      resumen_requerimiento: generateConciseSummary(rawText, 'SERVICIO / ATENCIÓN', sub, detectedProduct, `Cliente reclama inconformidad con atención o tiempos de respuesta.`),
-      intencion_cliente: 'Inconformidad con la calidad del servicio o tiempos',
+      resumen_requerimiento: generateConciseSummary(rawText, 'SERVICIO / ATENCIÓN', sub, detectedProduct, `Cliente reporta asunto de atención al cliente o tiempos de respuesta.`),
+      intencion_cliente: 'Gestión sobre calidad de atención o tiempos de respuesta',
       confianza: 92,
       requiere_revision_humana: false,
       producto_detectado: detectedProduct,
       problema_principal: 'Calidad de atención o demora en trámite',
-      solicitud_cliente: 'Respuesta oportuna y mejora en servicio',
+      solicitud_cliente: 'Respuesta oportuna y seguimiento en servicio',
+      evidencia_textual: rawText.slice(0, 100)
+    };
+  }
+
+  // 8.20 CONTROL DE OTRAS: Saldos, movimientos, retiros en cajero y derechos de petición residuales
+  if (
+    lower.includes('saldo') ||
+    lower.includes('movimiento') ||
+    lower.includes('cajero') ||
+    lower.includes('retiro no dispensado') ||
+    lower.includes('no me dio el dinero')
+  ) {
+    return {
+      expediente,
+      categoria_principal: 'TRANSFERENCIAS',
+      subcategoria: 'SALDOS Y MOVIMIENTOS',
+      resumen_requerimiento: generateConciseSummary(rawText, 'TRANSFERENCIAS', 'SALDOS Y MOVIMIENTOS', detectedProduct, `Cliente solicita revisión de saldo, movimiento o retiro en cuenta.`),
+      intencion_cliente: 'Verificación de saldos, movimientos o retiros en cuenta',
+      confianza: 90,
+      requiere_revision_humana: false,
+      producto_detectado: detectedProduct,
+      problema_principal: 'Inconsistencia en saldo, movimiento o retiro en cuenta',
+      solicitud_cliente: 'Revisión y aclaración de movimientos y saldo de la cuenta',
+      evidencia_textual: rawText.slice(0, 100)
+    };
+  }
+
+  if (lower.includes('derecho de peticion') || lower.includes('peticion formal') || lower.includes('solicito informacion')) {
+    return {
+      expediente,
+      categoria_principal: 'INFORMACIÓN Y DOCUMENTOS',
+      subcategoria: 'CERTIFICADOS Y PAZ Y SALVO',
+      resumen_requerimiento: generateConciseSummary(rawText, 'INFORMACIÓN Y DOCUMENTOS', 'CERTIFICADOS Y PAZ Y SALVO', detectedProduct, `Cliente radica derecho de petición o solicitud formal de información.`),
+      intencion_cliente: 'Respuesta formal a derecho de petición o solicitud informativa',
+      confianza: 90,
+      requiere_revision_humana: false,
+      producto_detectado: detectedProduct,
+      problema_principal: 'Derecho de petición o solicitud de información bancaria',
+      solicitud_cliente: 'Respuesta formal y entrega de información solicitada',
       evidencia_textual: rawText.slice(0, 100)
     };
   }
@@ -4464,6 +5137,7 @@ export function validateClassificationConsistency(
       });
       return {
         ...fixed,
+        sentimiento: activeResult.sentimiento,
         categoria_principal: fixed.categoria_principal === 'CDT' ? 'PRODUCTOS' : fixed.categoria_principal,
         subcategoria: fixed.categoria_principal === 'CDT' ? 'CONDICIONES DEL PRODUCTO' : fixed.subcategoria,
         existe_inconsistencia: 'SI',
@@ -4556,31 +5230,7 @@ export function validateClassificationConsistency(
     };
   }
 
-  // 4. Contradiction: PAGO A ITAU assigned without TIPO ORIGEN = ITAU
-  const tipoOrigenVal = extractTipoOrigen(record);
-  const isItau = isTipoOrigenItau(tipoOrigenVal);
-
-  if (activeResult.categoria_principal === 'PAGO A ITAU' && !isItau) {
-    return {
-      ...activeResult,
-      categoria_principal: 'PAGOS / ABONOS',
-      subcategoria: 'APLICACIÓN DE PAGO',
-      existe_inconsistencia: 'SI',
-      motivo_inconsistencia: 'La categoría PAGO A ITAU está reservada exclusivamente para expedientes cuya columna TIPO ORIGEN corresponda a ITAU.'
-    };
-  }
-
-  // 5. Contradiction: Expediente with TIPO ORIGEN = ITAU and payment unapplied issue not assigned PAGO A ITAU
-  if (isItau && isPaymentUnappliedIssue(rawText) && activeResult.categoria_principal !== 'PAGO A ITAU' && activeResult.categoria_principal !== 'FRAUDES' && activeResult.categoria_principal !== 'PSE') {
-    const fixedItau = classifyPQRDeterministic(record);
-    return {
-      ...fixedItau,
-      existe_inconsistencia: 'SI',
-      motivo_inconsistencia: 'Se corrigió categoría: expediente con TIPO ORIGEN = ITAU y reporte de pago no aplicado/reflejado asignado a PAGO A ITAU.'
-    };
-  }
-
-  // 6. Contradiction: CUOTAS DE MANEJO assigned to loan/credit installments or ambiguous quotas without management fee evidence
+  // 4. Contradiction: CUOTAS DE MANEJO assigned to loan/credit installments or ambiguous quotas without management fee evidence
   if (activeResult.categoria_principal === 'CUOTAS DE MANEJO' || activeResult.categoria_principal === 'CUOTA DE MANEJO') {
     const hasExplicitManejoOrAdmin =
       lower.includes('manejo') ||
@@ -4680,6 +5330,44 @@ export function validateClassificationConsistency(
     }
   }
 
+  // 8. Contradiction: Credit card cancellation misclassified as CONDICIONES or OTRAS
+  if (activeResult.categoria_principal === 'CONDICIONES' || activeResult.categoria_principal === 'OTRAS') {
+    const cardCancelGuard = detectCancelacionProductoOTarjeta(
+      rawText,
+      record.submotivo_original || record.resumen_original || '',
+      activeResult.producto_detectado || record.producto_original || 'NO ESPECIFICADO'
+    );
+    if (cardCancelGuard.matches) {
+      return {
+        ...activeResult,
+        categoria_principal: 'PRODUCTOS',
+        subcategoria: 'CANCELACIÓN DE PRODUCTOS',
+        producto_detectado: cardCancelGuard.producto_detectado,
+        problema_principal: cardCancelGuard.problema,
+        solicitud_cliente: cardCancelGuard.solicitud,
+        resumen_requerimiento: cardCancelGuard.resumen,
+        evidencia_textual: cardCancelGuard.evidencia,
+        confianza: Math.max(activeResult.confianza, 96),
+        requiere_revision_humana: false,
+        existe_inconsistencia: 'SI',
+        motivo_inconsistencia: 'Regla obligatoria Tarjetas de Crédito: la intención de cancelación o cierre del producto tiene prioridad sobre CONDICIONES u OTRAS.'
+      };
+    }
+  }
+
+  // 9. Strict Catalog Integrity Guard: guarantee exact valid (categoria_principal, subcategoria) pair from active catalog
+  const catalogChecked = validateCatalogPair(activeResult.categoria_principal, activeResult.subcategoria);
+  if (
+    catalogChecked.categoria !== activeResult.categoria_principal ||
+    catalogChecked.subcategoria !== activeResult.subcategoria
+  ) {
+    return {
+      ...activeResult,
+      categoria_principal: catalogChecked.categoria,
+      subcategoria: catalogChecked.subcategoria
+    };
+  }
+
   return activeResult;
 }
 
@@ -4750,24 +5438,7 @@ export function generatePropuestaRespuesta(
   const sub = subcat.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const prodLabel = producto && producto !== 'NO ESPECIFICADO' ? ` de su ${producto.toLowerCase()}` : '';
 
-  // 3.1 PAGO A ITAU
-  if (cat.includes('PAGO A ITAU') || cat.includes('PAGO ITAU')) {
-    if (sub.includes('TRANSFERENCIA')) {
-      return 'Se acusa recibo del reporte sobre transferencia no abonada a la obligación; se propone solicitar el comprobante emisor y validar con Operaciones la acreditación de los fondos.';
-    }
-    if (sub.includes('COMPROBANTE')) {
-      return 'Se atiende su solicitud de comprobante de pago; se propone verificar el registro en el sistema bancario y suministrar el soporte de la transacción realizada.';
-    }
-    if (sub.includes('DUPLICADO')) {
-      return 'Se atiende su reporte sobre posible duplicidad de pago; se propone conciliar los abonos registrados en el extracto y gestionar el ajuste o reversión en caso de comprobarse el cobro doble.';
-    }
-    if (sub.includes('DEMORA') || sub.includes('RECHAZ')) {
-      return 'Se reconoce la demora en la aplicación del pago informado; se propone rastrear la transacción y coordinar con el área de cartera su imputación a la obligación.';
-    }
-    return 'Se acusa recibo del reporte sobre el pago no reflejado en su obligación; se propone validar el comprobante aportado y coordinar con Operaciones la actualización del saldo.';
-  }
-
-  // 3.2 CDT
+  // 3.1 CDT
   if (cat === 'CDT') {
     if (sub.includes('VISUALIZ')) {
       return 'Se reconoce la dificultad para visualizar el CDT en canales digitales; se propone remitir el reporte técnico a soporte de canales para habilitar la consulta del producto.';
@@ -4911,11 +5582,29 @@ export function buildPQRSAnalysis(
       validated.existe_inconsistencia === 'SI'
     );
 
+  const sentimientoNormalizado =
+    normalizeSentimiento(validated.sentimiento ?? result?.sentimiento) ??
+    classifySentimentLocal(record.descripcion_original, catPrincipal).sentimiento;
+  const tipoCasoNormalizado =
+    normalizeTipoCaso(validated.tipo_caso ?? result?.tipo_caso) ??
+    (isHumanReview
+      ? undefined
+      : inferTipoCasoSFC(record, {
+          categoria: catPrincipal,
+          categoria_principal: catPrincipal,
+          subcategoria: subcat,
+          confianza: conf,
+          requiere_revision: isHumanReview,
+          requiere_revision_humana: isHumanReview ? 'SI' : 'NO'
+        }));
+
   return {
     numero_expediente: record.numero_expediente,
     categoria: catPrincipal,
     categoria_principal: catPrincipal,
     subcategoria: subcat,
+    tipo_caso: tipoCasoNormalizado,
+    sentimiento: sentimientoNormalizado,
     categoria_ia: catPrincipal,
     subcategoria_ia: subcat,
     resumen_requerimiento: shortSummary,
@@ -4945,13 +5634,13 @@ export function buildPQRSAnalysis(
     justificacion: `Agrupado bajo ${catPrincipal} > ${subcat} con base en la evidencia textual y reglas de negocio.`,
     nivel_confianza: conf >= 85 ? 'Alta' : conf >= 70 ? 'Media' : 'Baja',
     propuesta_respuesta: propuestaRespuesta,
-    modelo_ia: 'gemini-3.8-flash',
-    version_prompt: 'v4.1.0-tarjetas-credito-mejoradas',
+    modelo_ia: 'gemini-4-hydrogen',
+    version_prompt: 'v5.0.0-bdb-reforzado-control-otras',
     fecha_analisis: new Date().toISOString(),
     estado_revision: 'PENDIENTE',
-    fecha_pago: validated.fecha_pago || '',
-    valor_pago: validated.valor_pago || '',
-    pagos_detectados: validated.pagos_detectados || []
+    etiquetas_informativas: getInformationalTags(record.descripcion_original),
+    ...(result?.origen_clasificacion ? { origen_clasificacion: result.origen_clasificacion } : {}),
+    ...(result?.segunda_validacion_otras ? { segunda_validacion_otras: result.segunda_validacion_otras } : {})
   };
 }
 
