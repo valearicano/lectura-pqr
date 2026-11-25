@@ -563,23 +563,47 @@ export function detectProduct(
     return 'CDT';
   }
 
+  const isBackgroundMultiProductCards =
+    fullText.includes('tanto de tarjetas como') ||
+    fullText.includes('productos como tarjetas');
+
   if (
-    fullText.includes('tarjeta de credito') ||
-    fullText.includes('tarjeta credito') ||
-    fullText.includes('tdc') ||
-    fullText.includes('tarjeta visa') ||
-    fullText.includes('tarjeta mastercard') ||
-    fullText.includes('tarjeta amex') ||
-    fullText.includes('tarjeta american express') ||
-    fullText.includes('tarjeta lifemiles') ||
-    fullText.includes('cupo de la tarjeta') ||
-    fullText.includes('cupo de mi tarjeta') ||
-    fullText.includes('aumento de cupo') ||
-    fullText.includes('compra diferida') ||
-    fullText.includes('diferir compra') ||
-    fullText.includes('extracto de la tarjeta') ||
-    fullText.includes('extracto de mi tarjeta') ||
-    (fullText.includes('tarjeta') && (fullText.includes('cupo') || fullText.includes('diferid') || fullText.includes('avance')))
+    !isBackgroundMultiProductCards &&
+    (fullText.includes('tarjeta de credito') ||
+      fullText.includes('tarjeta credito') ||
+      fullText.includes('tarjetas de credito') ||
+      fullText.includes('tarjetas credito') ||
+      /\btdc\b/i.test(fullText) ||
+      /\btc\b/i.test(fullText) ||
+      /\bt\.c\.?/i.test(fullText) ||
+      /\bt\/c\b/i.test(fullText) ||
+      fullText.includes('tarjeta visa') ||
+      fullText.includes('tarjeta mastercard') ||
+      fullText.includes('tarjeta amex') ||
+      fullText.includes('tarjeta american express') ||
+      fullText.includes('tarjeta lifemiles') ||
+      fullText.includes('cupo de la tarjeta') ||
+      fullText.includes('cupo de mi tarjeta') ||
+      fullText.includes('cupo de tarjeta') ||
+      fullText.includes('pago de tarjeta') ||
+      fullText.includes('pago de mi tarjeta') ||
+      fullText.includes('pago de la tarjeta') ||
+      fullText.includes('pago a mi tarjeta') ||
+      fullText.includes('pago a la tarjeta') ||
+      fullText.includes('pago realizado a mi tarjeta') ||
+      fullText.includes('pago realizado a la tarjeta') ||
+      fullText.includes('compras con tarjeta') ||
+      fullText.includes('compra con tarjeta') ||
+      fullText.includes('deuda de tarjeta') ||
+      fullText.includes('deuda de mi tarjeta') ||
+      fullText.includes('deuda de la tarjeta') ||
+      fullText.includes('aumento de cupo') ||
+      fullText.includes('compra diferida') ||
+      fullText.includes('diferir compra') ||
+      fullText.includes('extracto de la tarjeta') ||
+      fullText.includes('extracto de mi tarjeta') ||
+      fullText.includes('extracto de tarjeta') ||
+      (fullText.includes('tarjeta') && (fullText.includes('cupo') || fullText.includes('diferid') || fullText.includes('avance'))))
   ) {
     return 'TARJETA DE CRÉDITO';
   }
@@ -588,7 +612,7 @@ export function detectProduct(
     return 'TARJETA DÉBITO';
   }
 
-  if (fullText.includes('tarjeta') || fullText.includes('plastico')) {
+  if (!isBackgroundMultiProductCards && (fullText.includes('tarjeta') || fullText.includes('plastico'))) {
     return 'TARJETA DE CRÉDITO';
   }
 
@@ -2627,6 +2651,156 @@ export function detectCancelacionProductoOTarjeta(
  * - REFINANCIACIÓN Y ACUERDOS
  * - ESTADO DE OBLIGACIÓN / SALDOS
  */
+/**
+ * Priority Product Guard: Identifies when the primary product in the PQR is TARJETA DE CRÉDITO (TC).
+ * Protects credit card cases from being misclassified into CRÉDITOS / CARTERA (especially REVERSIÓN),
+ * even when mentioning pagos, abonos, saldos, reversión, devolución, reintegro, intereses o cobros.
+ */
+export function isCreditCardPrimaryContext(
+  text: string,
+  submotivo?: string,
+  detectedProduct?: string
+): boolean {
+  const lower = (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const subLower = (submotivo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const full = `${lower} ${subLower}`;
+
+  // Explicit cartera/loan products take precedence if clearly named
+  const hasExplicitLoan =
+    full.includes('credito de vivienda') ||
+    full.includes('credito hipotecario') ||
+    full.includes('hipotecari') ||
+    full.includes('vivienda') ||
+    full.includes('frech') ||
+    full.includes('fresh') ||
+    full.includes('french') ||
+    full.includes('fresch') ||
+    full.includes('leasing') ||
+    full.includes('libranza') ||
+    full.includes('libre inversion') ||
+    full.includes('credito de consumo') ||
+    full.includes('credito consumo') ||
+    full.includes('credito de vehiculo') ||
+    full.includes('credito vehiculo') ||
+    full.includes('credito automotriz') ||
+    full.includes('credito rotativo') ||
+    full.includes('prestamo') ||
+    full.includes('cartera') ||
+    full.includes('obligacion crediticia');
+
+  if (hasExplicitLoan) return false;
+
+  // Exclude background multi-product mentions or pure debit card mentions
+  const isBackgroundOrDebitCard =
+    full.includes('tanto de tarjetas como') ||
+    full.includes('productos como tarjetas') ||
+    (full.includes('tarjeta debito') && !full.includes('tarjeta de credito') && !full.includes('tarjeta credito'));
+
+  if (isBackgroundOrDebitCard) return false;
+
+  const hasExplicitTC =
+    full.includes('tarjeta de credito') ||
+    full.includes('tarjeta credito') ||
+    full.includes('tarjetas de credito') ||
+    full.includes('tarjetas credito') ||
+    /\btdc\b/i.test(full) ||
+    /\btc\b/i.test(full) ||
+    /\bt\.c\.?/i.test(full) ||
+    /\bt\/c\b/i.test(full) ||
+    full.includes('tarjeta visa') ||
+    full.includes('tarjeta mastercard') ||
+    full.includes('tarjeta amex') ||
+    full.includes('tarjeta american express') ||
+    full.includes('tarjeta lifemiles') ||
+    full.includes('cupo de tarjeta') ||
+    full.includes('cupo de mi tarjeta') ||
+    full.includes('cupo de la tarjeta') ||
+    full.includes('pago de tarjeta') ||
+    full.includes('pago de mi tarjeta') ||
+    full.includes('pago de la tarjeta') ||
+    full.includes('pago a mi tarjeta') ||
+    full.includes('pago a la tarjeta') ||
+    full.includes('pago realizado a mi tarjeta') ||
+    full.includes('pago realizado a la tarjeta') ||
+    full.includes('pague mi tarjeta') ||
+    full.includes('pague la tarjeta') ||
+    full.includes('compras con tarjeta') ||
+    full.includes('compra con tarjeta') ||
+    full.includes('compra con mi tarjeta') ||
+    full.includes('extracto de tarjeta') ||
+    full.includes('extracto de mi tarjeta') ||
+    full.includes('extracto de la tarjeta') ||
+    full.includes('deuda de tarjeta') ||
+    full.includes('deuda de mi tarjeta') ||
+    full.includes('deuda de la tarjeta') ||
+    full.includes('a mi tarjeta') ||
+    full.includes('en mi tarjeta') ||
+    full.includes('de mi tarjeta') ||
+    full.includes('mi tarjeta') ||
+    full.includes('a la tarjeta') ||
+    full.includes('en la tarjeta') ||
+    full.includes('de la tarjeta') ||
+    full.includes('la tarjeta') ||
+    /\btarjeta\b/.test(full);
+
+  if (hasExplicitTC) return true;
+
+  if (detectedProduct === 'TARJETA DE CRÉDITO') {
+    const withoutTC = full.replace(/tarjetas?\s+(de\s+)?credito/g, ' ');
+    if (!/\bcredito\b/.test(withoutTC) && !withoutTC.includes('obligacion')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Checks whether the text expresses an explicit request to reverse, annul, or return
+ * a payment/debit already applied to a cartera obligation (required for CRÉDITOS / CARTERA > REVERSIÓN).
+ */
+export function hasExpressCarteraReversionRequest(rawText: string): boolean {
+  const full = (rawText || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return (
+    full.includes('reversar') ||
+    full.includes('reversado') ||
+    full.includes('reversen') ||
+    full.includes('reversion') ||
+    full.includes('solicito reversion') ||
+    full.includes('anular el abono') ||
+    full.includes('anular abono') ||
+    full.includes('anular el pago') ||
+    full.includes('anular pago') ||
+    full.includes('deshacer el pago') ||
+    full.includes('deshacer el abono') ||
+    full.includes('vuelva a mi cuenta') ||
+    full.includes('regrese a mi cuenta') ||
+    full.includes('retornar el dinero') ||
+    full.includes('retornar los recursos') ||
+    full.includes('devolver el pago') ||
+    full.includes('devolver el abono') ||
+    full.includes('devolver un debito') ||
+    full.includes('devolver el dinero') ||
+    full.includes('devuelvan el dinero') ||
+    full.includes('devuelvan el valor') ||
+    full.includes('que me devuelvan') ||
+    full.includes('devolucion del pago') ||
+    full.includes('devolucion de pago') ||
+    full.includes('devolucion de un pago') ||
+    full.includes('devolucion del abono') ||
+    full.includes('devolucion de abono') ||
+    full.includes('devolucion de debito automatico') ||
+    full.includes('solicito devolucion') ||
+    full.includes('solicito la devolucion') ||
+    full.includes('solicito reintegro') ||
+    full.includes('solicito el reintegro') ||
+    full.includes('que reintegren') ||
+    full.includes('reintegro del pago') ||
+    full.includes('reintegro del dinero') ||
+    full.includes('reintegro de dinero')
+  );
+}
+
 export function detectCreditoCartera(
   text: string,
   submotivo: string,
@@ -2645,32 +2819,10 @@ export function detectCreditoCartera(
   const submotivoLower = (submotivo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const full = `${lower} ${submotivoLower}`;
 
-  // Credit card deferred purchases belong to TARJETAS > DIFERIDOS Y FINANCIACIÓN
-  const isCardDeferredPurchase =
-    (full.includes('tarjeta de credito') || full.includes('tarjeta credito') || detectedProduct === 'TARJETA DE CRÉDITO') &&
-    (full.includes('compra diferida') || full.includes('rediferir') || full.includes('diferir compra') || full.includes('diferir a cuotas') || full.includes('plazo de cuotas')) &&
-    !full.includes('credito de vivienda') && !full.includes('leasing') && !full.includes('libranza') && !full.includes('prestamo');
-
-  if (isCardDeferredPurchase) {
-    return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
-  }
-
-  // Credit card payment/abono issues belong to PAGOS / ABONOS, not CRÉDITOS / CARTERA
-  const isCreditCardPayment =
-    (full.includes('tarjeta de credito') || full.includes('tarjeta credito') || detectedProduct === 'TARJETA DE CRÉDITO') &&
-    (full.includes('pago de la tarjeta') ||
-      full.includes('pago de mi tarjeta') ||
-      full.includes('pague mi tarjeta') ||
-      full.includes('pago de tarjeta') ||
-      full.includes('abono a mi tarjeta') ||
-      full.includes('abono a la tarjeta') ||
-      full.includes('abono de mi tarjeta') ||
-      full.includes('abono de tarjeta') ||
-      full.includes('abono en mi tarjeta') ||
-      full.includes('abono a tarjeta')) &&
-    !full.includes('credito de vivienda') && !full.includes('leasing') && !full.includes('libranza') && !full.includes('prestamo') && !full.includes('cartera') && !full.includes('frech');
-
-  if (isCreditCardPayment) {
+  // PRIORITY PRODUCT PROTECTION RULE:
+  // If the primary product is TARJETA DE CRÉDITO (TC), NEVER classify under CRÉDITOS / CARTERA,
+  // even when mentioning pagos, abonos, saldos, reversión, devolución, reintegro, intereses o cobros.
+  if (isCreditCardPrimaryContext(text, submotivo, detectedProduct)) {
     return { matches: false, subcategoria: '', intencion: '', problema: '', solicitud: '', resumen: '', evidencia: '', producto_detectado: '' };
   }
 
@@ -2892,6 +3044,14 @@ export function detectCreditoCartera(
     full.includes('imputacion del pago') ||
     full.includes('imputacion de pago') ||
     full.includes('corregir la aplicacion de mi abono') ||
+    full.includes('corregir la aplicacion del pago') ||
+    full.includes('corregir la aplicacion de un pago') ||
+    full.includes('corregir aplicacion del pago') ||
+    full.includes('corregir aplicacion de pago') ||
+    full.includes('trasladar el pago') ||
+    full.includes('trasladar un pago') ||
+    full.includes('traslado de pago entre obligaciones') ||
+    full.includes('mover el pago a otra obligacion') ||
     ((full.includes('abono') || full.includes('pago')) &&
       (full.includes('aplicado incorrectamente') ||
         full.includes('aplicaron incorrectamente') ||
@@ -2907,7 +3067,7 @@ export function detectCreditoCartera(
         full.includes('intereses') ||
         full.includes('cuota')));
   if (isReaplicacion) {
-    const kws = ['reaplicar', 'reaplicacion', 'reaplicaciones', 'abono a capital', 'pago a capital', 'reduccion de la cuota', 'cobertura de cuota', 'imputacion del pago'];
+    const kws = ['reaplicar', 'reaplicacion', 'reaplicaciones', 'abono a capital', 'pago a capital', 'reduccion de la cuota', 'cobertura de cuota', 'imputacion del pago', 'corregir la aplicacion', 'trasladar'];
     const evidencia = extractEvidence(kws);
     return {
       matches: true,
@@ -3051,52 +3211,87 @@ export function detectCreditoCartera(
     };
   }
 
-  // 8. REVERSIÓN
+  // 8. REVERSIÓN (STRICT CRITERIA — ONLY express reversal/return of a payment ALREADY APPLIED to a cartera obligation)
+  const isUnappliedOrTrackingOrSaldo =
+    full.includes('no aparece aplicado') ||
+    full.includes('no aparece reflejado') ||
+    full.includes('no se ha aplicado') ||
+    full.includes('no ha sido aplicado') ||
+    full.includes('no se ve reflejado') ||
+    full.includes('no veo reflejado') ||
+    full.includes('no se refleja') ||
+    full.includes('no aplicado') ||
+    full.includes('no aplicada') ||
+    full.includes('sin aplicar') ||
+    full.includes('sin reflejar') ||
+    full.includes('pendiente de aplicar') ||
+    full.includes('pendiente de aplicacion') ||
+    full.includes('pendiente de reflejar') ||
+    full.includes('no aparece el pago') ||
+    full.includes('no ha ingresado') ||
+    full.includes('no me han aplicado') ||
+    full.includes('rastrear') ||
+    full.includes('rastreo') ||
+    full.includes('donde quedo aplicado') ||
+    full.includes('validar donde quedo') ||
+    full.includes('verificar donde quedo') ||
+    full.includes('ubicar el pago') ||
+    full.includes('trasladar el pago') ||
+    full.includes('trasladar un pago') ||
+    full.includes('entre obligaciones') ||
+    full.includes('reliquidacion') ||
+    full.includes('reliquidar') ||
+    full.includes('aclaracion de saldo') ||
+    full.includes('aclarar saldo') ||
+    full.includes('aclarar el saldo') ||
+    full.includes('ajuste de saldo') ||
+    full.includes('ajustar el saldo');
+
+  const isCommerceOrPurchaseRefund =
+    (full.includes('compra') || full.includes('comercio') || full.includes('establecimiento') || full.includes('datafono')) &&
+    !full.includes('debito automatico') &&
+    !full.includes('cuota del credito') &&
+    !full.includes('credito de vivienda') &&
+    !full.includes('credito de consumo') &&
+    !full.includes('leasing') &&
+    !full.includes('libranza');
+
+  const hasCarteraPaymentOrDebitContext =
+    full.includes('pago') ||
+    full.includes('abono') ||
+    full.includes('cuota') ||
+    full.includes('obligacion') ||
+    full.includes('credito') ||
+    full.includes('leasing') ||
+    full.includes('libranza') ||
+    full.includes('vivienda') ||
+    full.includes('hipotecari') ||
+    full.includes('consumo') ||
+    full.includes('vehiculo') ||
+    full.includes('cartera') ||
+    full.includes('prestamo') ||
+    full.includes('debito automatico') ||
+    full.includes('nomina') ||
+    full.includes('minimo vital');
+
   const isReversion =
-    (full.includes('solicito reversion') ||
-     full.includes('solicito devolucion') ||
-     full.includes('necesito que me devuelvan') ||
-     full.includes('solicito reintegro') ||
-     full.includes('que reintegren') ||
-     full.includes('reversar') ||
-     full.includes('reversion del pago') ||
-     full.includes('reversion de pago') ||
-     full.includes('reversion de un pago') ||
-     full.includes('devolucion del pago') ||
-     full.includes('devolucion de pago') ||
-     full.includes('devolucion de un pago') ||
-     full.includes('reversion de debito automatico') ||
-     full.includes('devolucion de debito automatico') ||
-     full.includes('reversar debito automatico') ||
-     full.includes('reversion inmediata del debito automatico') ||
-     full.includes('me debitaron automaticamente y solicito devolucion') ||
-     full.includes('debitaron automaticamente dos veces') ||
-     full.includes('pago doble') ||
-     full.includes('pago duplicado') ||
-     full.includes('cobro doble') ||
-     full.includes('cobro duplicado') ||
-     full.includes('cuota dos veces') ||
-     full.includes('descuento que afecta mi minimo vital') ||
-     full.includes('minimo vital') ||
-     full.includes('afecta mi minimo vital') ||
-     full.includes('vulnera mi minimo vital') ||
-     full.includes('descontaron dinero de mi nomina') ||
-     full.includes('descuento de mi nomina') ||
-     full.includes('devolver un debito') ||
-     full.includes('reversion por un pago aplicado indebidamente')) &&
+    hasExpressCarteraReversionRequest(full) &&
+    hasCarteraPaymentOrDebitContext &&
+    !isUnappliedOrTrackingOrSaldo &&
+    !isCommerceOrPurchaseRefund &&
     !full.includes('cuota de manejo') &&
     !full.includes('cuotas de manejo');
 
   if (isReversion) {
-    const kws = ['reversion de debito automatico', 'debito automatico', 'pago doble', 'pago duplicado', 'minimo vital', 'devolucion', 'reversion', 'reintegro'];
+    const kws = ['reversion', 'reversar', 'reversado', 'reversen', 'anular el abono', 'anular el pago', 'vuelva a mi cuenta', 'debito automatico', 'minimo vital', 'devolucion', 'reintegro'];
     const evidencia = extractEvidence(kws);
     return {
       matches: true,
       subcategoria: 'REVERSIÓN',
-      intencion: 'Solicitud de reversión, reintegro o devolución de dinero debitado, cobrado o descontado',
-      problema: `Débito automático, cobro duplicado o descuento cuestionado en ${prod.toLowerCase()}`,
-      solicitud: 'Reversión inmediata y reintegro del dinero debitado o descontado',
-      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'REVERSIÓN', prod, 'Solicita reversión y devolución del débito automático, pago duplicado o descuento.'),
+      intencion: 'Solicitud expresa de reversión, anulación o devolución de un pago ya aplicado a una obligación de cartera',
+      problema: `Solicitud de reversión o devolución de pago/débito aplicado en ${prod.toLowerCase()}`,
+      solicitud: 'Reversión y devolución a la cuenta de origen del pago o débito aplicado al crédito',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'REVERSIÓN', prod, 'Solicita reversión o devolución de un pago o débito ya aplicado a su obligación de cartera.'),
       evidencia,
       producto_detectado: prod
     };
@@ -3249,6 +3444,35 @@ export function detectCreditoCartera(
     full.includes('cuotas de financiacion') ||
     full.includes('revisar las cuotas') ||
     full.includes('revisar cuotas');
+
+  // Secondary 2: Reliquidación, aclaración o ajuste de saldo de obligación de cartera
+  const isReliquidacionSaldoCartera =
+    hasGenericCreditTerm &&
+    (full.includes('reliquidacion') ||
+      full.includes('reliquidar') ||
+      full.includes('aclaracion de saldo') ||
+      full.includes('aclarar saldo') ||
+      full.includes('aclarar el saldo') ||
+      full.includes('ajuste de saldo') ||
+      full.includes('ajuste en el saldo') ||
+      full.includes('ajustar el saldo') ||
+      full.includes('estado de la obligacion') ||
+      full.includes('estado de mi obligacion'));
+
+  if (isReliquidacionSaldoCartera && !isPaymentUnappliedIssue(text)) {
+    const kws = ['reliquidacion', 'reliquidar', 'aclaracion de saldo', 'ajuste de saldo', 'ajuste en el saldo', 'estado de la obligacion', 'saldo'];
+    const evidencia = extractEvidence(kws);
+    return {
+      matches: true,
+      subcategoria: 'ESTADO DE OBLIGACIÓN / SALDOS',
+      intencion: 'Solicitud de reliquidación, aclaración o ajuste de saldo de la obligación crediticia',
+      problema: `Solicitud de reliquidación o aclaración de saldo en ${prod.toLowerCase()}`,
+      solicitud: 'Reliquidación, revisión y aclaración del saldo actual de la obligación',
+      resumen: generateConciseSummary(text, 'CRÉDITOS / CARTERA', 'ESTADO DE OBLIGACIÓN / SALDOS', prod, 'Solicita reliquidación, aclaración o ajuste de saldo de su crédito.'),
+      evidencia,
+      producto_detectado: prod
+    };
+  }
 
   if (hasGenericCreditTerm && hasGenericInstallment && !isPaymentUnappliedIssue(text)) {
     const kws = ['cuota del credito', 'cuota mensual', 'cuotas', 'cuota', 'credito'];
@@ -4420,7 +4644,14 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // 8.2 TARJETA / PAGOS: Pagos no aplicados, no reflejados, demorados o duplicados
+  // 8.2 TARJETA / PAGOS: Pagos no aplicados, no reflejados, rastreo, demorados, duplicados o reversión de pago de TC
+  const isCardPrimary = isCreditCardPrimaryContext(
+    rawText,
+    record.submotivo_original || record.resumen_original || '',
+    detectedProduct
+  );
+  const effectiveProduct = isCardPrimary ? 'TARJETA DE CRÉDITO' : detectedProduct;
+
   const isTransferOnly = lower.includes('transferencia') || lower.includes('transferi');
   const hasPaymentWord = lower.includes('pago') || lower.includes('pague') || lower.includes('pagos') || lower.includes('abono');
   const hasReflectionOrDuplicateIssue =
@@ -4428,8 +4659,14 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     lower.includes('no veo reflejado') ||
     lower.includes('no se refleja') ||
     lower.includes('no aplicado') ||
+    lower.includes('no aparece aplicado') ||
     lower.includes('no aparece el pago') ||
     lower.includes('pendiente de reflejar') ||
+    lower.includes('rastrear') ||
+    lower.includes('rastreo') ||
+    lower.includes('donde quedo aplicado') ||
+    lower.includes('validar donde quedo') ||
+    lower.includes('verificar donde quedo') ||
     lower.includes('dos veces') ||
     lower.includes('duplicado') ||
     lower.includes('doble pago') ||
@@ -4440,6 +4677,11 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     lower.includes('aplicaron incorrectamente') ||
     lower.includes('mal aplicado') ||
     lower.includes('aplicacion incorrecta');
+
+  const isCardPaymentReversal =
+    isCardPrimary &&
+    hasPaymentWord &&
+    (lower.includes('revers') || lower.includes('devolucion') || lower.includes('reintegro') || lower.includes('anular'));
 
   const isDebitoAutomaticoPago =
     lower.includes('debito automatico') ||
@@ -4462,6 +4704,7 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
 
   const isPaymentIssue =
     (hasPaymentWord && hasReflectionOrDuplicateIssue) ||
+    isCardPaymentReversal ||
     (!isTransferOnly && isPaymentUnappliedIssue(rawText)) ||
     isDebitoAutomaticoPago ||
     (hasPaymentWord && isPagoRecaudoConvenio) ||
@@ -4470,33 +4713,37 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     lower.includes('debito duplicado del pago');
 
   if (isPaymentIssue) {
-    const prodDesc = detectedProduct !== 'NO ESPECIFICADO' ? ` de ${detectedProduct.toLowerCase()}` : '';
+    const prodDesc = effectiveProduct !== 'NO ESPECIFICADO' ? ` de ${effectiveProduct.toLowerCase()}` : '';
     const subPago = isDebitoAutomaticoPago
       ? 'DÉBITOS AUTOMÁTICOS'
       : isPagoRecaudoConvenio
         ? 'PAGOS Y RECAUDOS'
         : 'APLICACIÓN DE PAGO';
     const problemaPago =
-      subPago === 'DÉBITOS AUTOMÁTICOS'
-        ? `Gestión o novedad en débito automático${prodDesc}`
-        : subPago === 'PAGOS Y RECAUDOS'
-          ? `Inconveniente con pago de factura, convenio o servicio público${prodDesc}`
-          : `Pago${prodDesc} no aplicado, mal aplicado, duplicado o pendiente de reflejar`;
+      isCardPaymentReversal
+        ? `Solicitud de reversión o ajuste de pago realizado${prodDesc}`
+        : subPago === 'DÉBITOS AUTOMÁTICOS'
+          ? `Gestión o novedad en débito automático${prodDesc}`
+          : subPago === 'PAGOS Y RECAUDOS'
+            ? `Inconveniente con pago de factura, convenio o servicio público${prodDesc}`
+            : `Pago${prodDesc} no aplicado, mal aplicado, duplicado o pendiente de reflejar`;
     const solicitudPago =
-      subPago === 'DÉBITOS AUTOMÁTICOS'
-        ? 'Inscripción, cancelación o revisión del débito automático'
-        : subPago === 'PAGOS Y RECAUDOS'
-          ? 'Validación y aplicación del pago de convenio o factura realizada'
-          : 'Aplicación correcta y actualización de saldo del pago realizado';
+      isCardPaymentReversal
+        ? 'Revisión, reversión o ajuste del pago realizado a la tarjeta de crédito'
+        : subPago === 'DÉBITOS AUTOMÁTICOS'
+          ? 'Inscripción, cancelación o revisión del débito automático'
+          : subPago === 'PAGOS Y RECAUDOS'
+            ? 'Validación y aplicación del pago de convenio o factura realizada'
+            : 'Aplicación correcta y actualización de saldo del pago realizado';
     return {
       expediente,
       categoria_principal: 'PAGOS / ABONOS',
       subcategoria: subPago,
-      resumen_requerimiento: generateConciseSummary(rawText, 'PAGOS / ABONOS', subPago, detectedProduct, `Cliente reporta novedad en ${subPago.toLowerCase()}${prodDesc}.`),
+      resumen_requerimiento: generateConciseSummary(rawText, 'PAGOS / ABONOS', subPago, effectiveProduct, `Cliente reporta novedad en ${subPago.toLowerCase()}${prodDesc}.`),
       intencion_cliente: solicitudPago,
       confianza: 97,
       requiere_revision_humana: false,
-      producto_detectado: detectedProduct,
+      producto_detectado: effectiveProduct,
       problema_principal: problemaPago,
       solicitud_cliente: solicitudPago,
       evidencia_textual: rawText.slice(0, 100)
@@ -4508,23 +4755,29 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     lower.includes('interes de mora') ||
     lower.includes('intereses de mora') ||
     lower.includes('intereses moratorios') ||
+    lower.includes('interes moratorio') ||
     lower.includes('interes corriente') ||
     lower.includes('intereses corrientes') ||
     lower.includes('cobro de intereses') ||
+    lower.includes('intereses cobrados') ||
+    lower.includes('interes cobrado') ||
+    lower.includes('cobrando intereses') ||
+    lower.includes('cobran intereses') ||
     lower.includes('liquidacion de intereses') ||
-    lower.includes('tasa de interes incorrecta');
+    lower.includes('tasa de interes incorrecta') ||
+    (isCardPrimary && (lower.includes('intereses') || lower.includes('interes')));
 
   if (isInterestsIssue) {
-    const prodDesc = detectedProduct !== 'NO ESPECIFICADO' ? ` en ${detectedProduct.toLowerCase()}` : '';
+    const prodDesc = effectiveProduct !== 'NO ESPECIFICADO' ? ` en ${effectiveProduct.toLowerCase()}` : '';
     return {
       expediente,
       categoria_principal: 'COMISIONES Y COBROS',
       subcategoria: 'INTERESES',
-      resumen_requerimiento: generateConciseSummary(rawText, 'COMISIONES Y COBROS', 'INTERESES', detectedProduct, `Cliente reclama cobro de intereses moratorios o corrientes${prodDesc}.`),
+      resumen_requerimiento: generateConciseSummary(rawText, 'COMISIONES Y COBROS', 'INTERESES', effectiveProduct, `Cliente reclama cobro de intereses moratorios o corrientes${prodDesc}.`),
       intencion_cliente: 'Revisión y reliquidación de cobro de intereses',
       confianza: 96,
       requiere_revision_humana: false,
-      producto_detectado: detectedProduct,
+      producto_detectado: effectiveProduct,
       problema_principal: `Cobro o liquidación errónea de intereses${prodDesc}`,
       solicitud_cliente: 'Reliquidación y devolución de cobro indebido de intereses',
       evidencia_textual: rawText.slice(0, 100)
@@ -4569,12 +4822,13 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
     };
   }
 
-  // 8.5 TARJETA: Devolución de compras y transacciones comerciales
-  const hasRefundWord = lower.includes('devolucion') || lower.includes('reintegro') || lower.includes('reversion');
+  // 8.5 TARJETA: Devolución de compras, cobros y transacciones comerciales con tarjeta
+  const hasRefundWord = lower.includes('devolucion') || lower.includes('reintegro') || lower.includes('reversion') || lower.includes('reversar');
   const hasCommerceWord = lower.includes('compra') || lower.includes('comercio') || lower.includes('establecimiento') || lower.includes('datafono');
 
   const isPurchaseRefund =
     (hasRefundWord && hasCommerceWord) ||
+    (isCardPrimary && hasRefundWord && (lower.includes('cobro') || lower.includes('cargo') || lower.includes('transaccion'))) ||
     lower.includes('compra duplicada en comercio') ||
     lower.includes('doble cobro en datafono') ||
     lower.includes('transaccion declinada pero cobrada');
@@ -4584,13 +4838,13 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
       expediente,
       categoria_principal: 'TARJETAS',
       subcategoria: 'COMPRAS Y DEVOLUCIONES',
-      resumen_requerimiento: generateConciseSummary(rawText, 'TARJETAS', 'COMPRAS Y DEVOLUCIONES', 'TARJETA DE CRÉDITO', `Cliente solicita acreditación de devolución pendiente por compra con tarjeta.`),
-      intencion_cliente: 'Acreditación de reintegro o reversión de compra comercial',
+      resumen_requerimiento: generateConciseSummary(rawText, 'TARJETAS', 'COMPRAS Y DEVOLUCIONES', 'TARJETA DE CRÉDITO', `Cliente solicita devolución o reintegro de compra o cobro realizado con tarjeta.`),
+      intencion_cliente: 'Acreditación de reintegro o devolución de compra o cobro en tarjeta',
       confianza: 96,
       requiere_revision_humana: false,
-      producto_detectado: detectedProduct !== 'NO ESPECIFICADO' ? detectedProduct : 'TARJETA DE CRÉDITO',
-      problema_principal: 'Devolución de compra en comercio no reflejada en la tarjeta',
-      solicitud_cliente: 'Acreditación del dinero devuelto por el comercio en la tarjeta',
+      producto_detectado: effectiveProduct !== 'NO ESPECIFICADO' ? effectiveProduct : 'TARJETA DE CRÉDITO',
+      problema_principal: 'Devolución de compra o cobro realizado a la tarjeta de crédito',
+      solicitud_cliente: 'Acreditación del dinero o devolución del cobro realizado en la tarjeta',
       evidencia_textual: rawText.slice(0, 100)
     };
   }
@@ -4820,15 +5074,16 @@ export function classifyPQRDeterministic(record: PQRInputRecord): PQRClassificat
 
   // 8.14 CRÉDITOS / CARTERA: Acuerdos de pago y reestructuración de créditos (excluye tarjetas de crédito)
   if (
-    lower.includes('acuerdo de pago') ||
-    lower.includes('refinanc') ||
-    lower.includes('alivio financiero') ||
-    lower.includes('reestructuracion') ||
-    textWithoutTarjetaCredito.includes('credito') ||
-    lower.includes('cartera') ||
-    lower.includes('prestamo') ||
-    lower.includes('libranza') ||
-    lower.includes('hipotecario')
+    !isCardPrimary &&
+    (lower.includes('acuerdo de pago') ||
+      lower.includes('refinanc') ||
+      lower.includes('alivio financiero') ||
+      lower.includes('reestructuracion') ||
+      textWithoutTarjetaCredito.includes('credito') ||
+      lower.includes('cartera') ||
+      lower.includes('prestamo') ||
+      lower.includes('libranza') ||
+      lower.includes('hipotecario'))
   ) {
     const isRefinance = lower.includes('refinanc') || lower.includes('acuerdo') || lower.includes('alivio') || lower.includes('reestructur');
     const sub = isRefinance ? 'REFINANCIACIÓN Y ACUERDOS' : 'ESTADO DE OBLIGACIÓN / SALDOS';
@@ -5330,6 +5585,148 @@ export function validateClassificationConsistency(
         existe_inconsistencia: 'SI',
         motivo_inconsistencia: 'Regla obligatoria Tarjetas de Crédito: la intención de cancelación o cierre del producto tiene prioridad sobre CONDICIONES u OTRAS.'
       };
+    }
+  }
+
+  // 8.5 PRIORITY PRODUCT GUARD: Credit Card (TC) NEVER allowed in CRÉDITOS / CARTERA,
+  // and STRICT CRÉDITOS / CARTERA > REVERSIÓN Guard.
+  const isCarteraCategory =
+    activeResult.categoria_principal === 'CRÉDITOS / CARTERA' ||
+    activeResult.categoria_principal === 'CARTERA / CRÉDITOS';
+
+  if (isCarteraCategory) {
+    const isCardCase = isCreditCardPrimaryContext(
+      rawText,
+      record.submotivo_original || record.resumen_original || '',
+      activeResult.producto_detectado || record.producto_original
+    );
+
+    if (isCardCase) {
+      let correctedCat = 'PAGOS / ABONOS';
+      let correctedSub = 'APLICACIÓN DE PAGO';
+
+      if (lower.includes('interes') || lower.includes('intereses')) {
+        correctedCat = 'COMISIONES Y COBROS';
+        correctedSub = 'INTERESES';
+      } else if (
+        lower.includes('compra') ||
+        lower.includes('comercio') ||
+        lower.includes('datafono') ||
+        ((lower.includes('devolucion') || lower.includes('reintegro') || lower.includes('revers')) &&
+          (lower.includes('cobro') || lower.includes('cargo')) &&
+          !lower.includes('pago') &&
+          !lower.includes('abono'))
+      ) {
+        correctedCat = 'TARJETAS';
+        correctedSub = 'COMPRAS Y DEVOLUCIONES';
+      } else if (lower.includes('cupo') || lower.includes('avance')) {
+        correctedCat = 'TARJETAS';
+        correctedSub = 'CUPO Y AVANCES';
+      } else if (lower.includes('diferid') || lower.includes('redifer')) {
+        correctedCat = 'TARJETAS';
+        correctedSub = 'DIFERIDOS Y FINANCIACIÓN';
+      } else if (lower.includes('bloqueo') || lower.includes('plastico') || lower.includes('entrega') || lower.includes('reposicion')) {
+        correctedCat = 'TARJETAS';
+        correctedSub = 'PLÁSTICO Y BLOQUEO';
+      } else if (lower.includes('milla') || lower.includes('latam') || lower.includes('puntos') || lower.includes('lealtad')) {
+        correctedCat = 'TARJETAS';
+        correctedSub = 'MILLAS Y PROGRAMAS DE LEALTAD';
+      } else if (!lower.includes('pago') && !lower.includes('pague') && !lower.includes('abono') && !lower.includes('debito')) {
+        correctedCat = 'TARJETAS';
+        correctedSub = 'COMPRAS Y DEVOLUCIONES';
+      }
+
+      return {
+        ...activeResult,
+        categoria_principal: correctedCat,
+        subcategoria: correctedSub,
+        producto_detectado: 'TARJETA DE CRÉDITO',
+        existe_inconsistencia: 'SI',
+        motivo_inconsistencia:
+          'Regla de protección TARJETA DE CRÉDITO: un caso de tarjeta de crédito no puede clasificarse en CRÉDITOS / CARTERA.'
+      };
+    }
+
+    if (activeResult.subcategoria === 'REVERSIÓN') {
+      const violatesUnappliedOrTracking =
+        lower.includes('no aparece aplicado') ||
+        lower.includes('no aparece reflejado') ||
+        lower.includes('no se ha aplicado') ||
+        lower.includes('no ha sido aplicado') ||
+        lower.includes('no se ve reflejado') ||
+        lower.includes('no veo reflejado') ||
+        lower.includes('no se refleja') ||
+        lower.includes('no aplicado') ||
+        lower.includes('sin aplicar') ||
+        lower.includes('pendiente de aplicar') ||
+        lower.includes('no aparece el pago') ||
+        lower.includes('rastrear') ||
+        lower.includes('rastreo') ||
+        lower.includes('donde quedo aplicado') ||
+        lower.includes('validar donde quedo');
+
+      const violatesReliquidacionSaldo =
+        (lower.includes('reliquidacion') ||
+          lower.includes('reliquidar') ||
+          lower.includes('aclaracion de saldo') ||
+          lower.includes('aclarar saldo') ||
+          lower.includes('ajuste de saldo') ||
+          lower.includes('ajuste en el saldo')) &&
+        !hasExpressCarteraReversionRequest(rawText);
+
+      const violatesReaplicacionOrTraslado =
+        (lower.includes('reaplicar') ||
+          lower.includes('reaplicacion') ||
+          lower.includes('corregir la aplicacion') ||
+          lower.includes('trasladar el pago') ||
+          lower.includes('trasladar un pago') ||
+          lower.includes('entre obligaciones')) &&
+        !lower.includes('vuelva a mi cuenta') &&
+        !lower.includes('regrese a mi cuenta');
+
+      if (violatesUnappliedOrTracking) {
+        return {
+          ...activeResult,
+          categoria_principal: 'PAGOS / ABONOS',
+          subcategoria: 'APLICACIÓN DE PAGO',
+          existe_inconsistencia: 'SI',
+          motivo_inconsistencia:
+            'Regla REVERSIÓN: un pago no aplicado, no reflejado o por rastrear corresponde a PAGOS / ABONOS > APLICACIÓN DE PAGO.'
+        };
+      }
+
+      if (violatesReaplicacionOrTraslado) {
+        return {
+          ...activeResult,
+          categoria_principal: 'CRÉDITOS / CARTERA',
+          subcategoria: 'REAPLICACIONES',
+          existe_inconsistencia: 'SI',
+          motivo_inconsistencia:
+            'Regla REVERSIÓN: corregir la aplicación o trasladar un pago entre obligaciones corresponde a REAPLICACIONES.'
+        };
+      }
+
+      if (violatesReliquidacionSaldo) {
+        return {
+          ...activeResult,
+          categoria_principal: 'CRÉDITOS / CARTERA',
+          subcategoria: 'ESTADO DE OBLIGACIÓN / SALDOS',
+          existe_inconsistencia: 'SI',
+          motivo_inconsistencia:
+            'Regla REVERSIÓN: solicitudes de reliquidación o aclaración/ajuste de saldo corresponden a ESTADO DE OBLIGACIÓN / SALDOS.'
+        };
+      }
+
+      if (!hasExpressCarteraReversionRequest(rawText)) {
+        return {
+          ...activeResult,
+          categoria_principal: 'PAGOS / ABONOS',
+          subcategoria: 'APLICACIÓN DE PAGO',
+          existe_inconsistencia: 'SI',
+          motivo_inconsistencia:
+            'Regla REVERSIÓN: no hay solicitud expresa de reversar o devolver un pago ya aplicado a cartera; se reclasifica a APLICACIÓN DE PAGO.'
+        };
+      }
     }
   }
 

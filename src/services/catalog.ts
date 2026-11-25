@@ -160,7 +160,7 @@ export const DEFAULT_CATALOG: CategoryItem[] = [
       { id: 'sub-cre-frech', nombre: 'FRECH', activa: true, descripcion: 'Subsidio o cobertura de tasa de vivienda FRECH/FRESH/FRENCH no aplicado, suspendido o no reflejado en la cuota' },
       { id: 'sub-cre-aum', nombre: 'AUMENTO DE CUOTA', activa: true, descripcion: 'Incremento, aumento no informado o cuota más alta que antes (incluso post-migración Itaú o tasa)' },
       { id: 'sub-cre-end', nombre: 'ENDOSO', activa: true, descripcion: 'Trámite, radicación, aceptación o actualización de endoso de póliza de seguros de vida, vivienda o externa' },
-      { id: 'sub-cre-rev', nombre: 'REVERSIÓN', activa: true, descripcion: 'Reversión o devolución de débitos automáticos, pagos duplicados, cobros indebidos o descuentos que afectan el mínimo vital' },
+      { id: 'sub-cre-rev', nombre: 'REVERSIÓN', activa: true, descripcion: 'Solicitud expresa de reversar, anular o devolver a la cuenta de origen un pago o débito ya aplicado a una obligación de cartera (nunca tarjeta de crédito, pagos no reflejados, rastreos ni reliquidaciones)' },
       { id: 'sub-cre-reap', nombre: 'REAPLICACIONES', activa: true, descripcion: 'Cambio de aplicación o imputación de pagos/abonos a capital, reducción de cuota, plazo o cobertura de cuota' },
       { id: 'sub-cre-hab', nombre: 'HÁBITO DE PAGO', activa: true, descripcion: 'Inconformidad porque los pagos no disminuyen el capital, se van solo a intereses o la deuda no baja' },
       { id: 'sub-cre-hist', nombre: 'HISTÓRICO DE PAGO', activa: true, descripcion: 'Solicitud de relación, certificado, reporte o verificación del historial de pagos efectuados al crédito' },

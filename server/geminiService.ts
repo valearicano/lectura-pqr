@@ -12,6 +12,8 @@ import {
   buildPQRSAnalysis,
   consolidateBatchClassifications,
   hasExplicitClassificationRule,
+  hasExpressCarteraReversionRequest,
+  isCreditCardPrimaryContext,
   normalizeCategoryName
 } from '../src/services/classifierEngine';
 import { createEmptyBatchTelemetry } from '../src/services/qualityMetricsService';
@@ -21,7 +23,7 @@ const GEMINI_EMBEDDING_MODEL = 'gemini-embedding-2';
 const GEMINI_TIMEOUT_MS = 60000;
 const GEMINI_MAX_RETRIES = 2;
 const SECOND_PASS_BATCH_SIZE = 8;
-const CACHE_SCHEMA_VERSION = 'v10-bdb-otras-2pass-local-sfc';
+const CACHE_SCHEMA_VERSION = 'v11-bdb-tc-vs-cartera-reversion';
 
 let aiInstance: GoogleGenAI | null = null;
 
@@ -313,6 +315,8 @@ DEBE conservarse "OTRAS" (decision: "CONSERVAR_OTRAS") cuando:
   * Cancelación/cierre de tarjeta de crédito o producto -> PRODUCTOS > CANCELACIÓN DE PRODUCTOS (no CONDICIONES).
   * Las menciones a Itaú no son categoría ni producto; clasifica bajo el catálogo vigente del Banco de Bogotá.
 - Reutiliza del bloque ANALISIS_INICIAL_REUTILIZADO los datos que ya sean correctos (producto, evidencia) cuando no requieran corrección.
+- REGLA PRIORITARIA DE PRODUCTO (CRÉDITO/CARTERA vs. TARJETA DE CRÉDITO): identifica primero si el cliente habla de TARJETA DE CRÉDITO (tarjeta, TC, cupo, pago/compras/extracto/deuda de tarjeta) o de CRÉDITO/CARTERA (consumo, vivienda, vehículo, leasing, libranza). NUNCA recuperes un caso de TARJETA DE CRÉDITO hacia CRÉDITOS / CARTERA (y nunca hacia CRÉDITOS / CARTERA > REVERSIÓN).
+- CRITERIO ESTRICTO DE REVERSIÓN (CRÉDITOS / CARTERA): solo asigna CRÉDITOS / CARTERA > REVERSIÓN cuando el cliente solicite expresamente reversar, anular o devolver a su cuenta un pago YA APLICADO a una obligación de cartera (nunca para TC, pagos no reflejados, rastreo, traslado entre obligaciones, pago duplicado sin pedir devolución, corrección de aplicación ni reliquidación/aclaración de saldo).
 - NO redactes respuestas oficiales definitivas del banco; la propuesta de respuesta es únicamente una orientación interna breve para el analista.
 
 ### CATÁLOGO VIGENTE (ÚNICAS COMBINACIONES PERMITIDAS)
@@ -409,12 +413,24 @@ ${JSON.stringify(formattedOtrasCases, null, 2)}
         const catalogCheck = validateCatalogPair(rawCat, rawSub);
         const cdtAllowed =
           catalogCheck.categoria !== 'CDT' || hasExplicitCDTMention(item.rec.descripcion_original);
+        const tcCarteraAllowed =
+          catalogCheck.categoria !== 'CRÉDITOS / CARTERA' ||
+          !isCreditCardPrimaryContext(
+            item.rec.descripcion_original,
+            item.rec.submotivo_original || item.rec.resumen_original || '',
+            String(aiData?.producto_detectado || item.rec.producto_original || '')
+          );
+        const reversionAllowed =
+          !(catalogCheck.categoria === 'CRÉDITOS / CARTERA' && catalogCheck.subcategoria === 'REVERSIÓN') ||
+          hasExpressCarteraReversionRequest(item.rec.descripcion_original);
 
         const canRecover =
           decision === 'RECUPERAR' &&
           catalogCheck.valid &&
           catalogCheck.categoria !== 'OTRAS' &&
-          cdtAllowed;
+          cdtAllowed &&
+          tcCarteraAllowed &&
+          reversionAllowed;
 
         const evidenciaFinal =
           String(aiData?.evidencia_textual || '').trim() ||
@@ -705,25 +721,54 @@ PROHIBIDO enviar a OTRAS cuando:
 Antes de asignar OTRAS, descarta exhaustivamente todas las categorías operativas del catálogo (PRODUCTOS, TARJETAS, CRÉDITOS / CARTERA, CONDICIONES, CDT, CUOTAS DE MANEJO, HONORARIOS Y GASTOS DE COBRANZA, PAGOS / ABONOS, TRANSFERENCIAS, COMISIONES Y COBROS, CANALES DIGITALES, INFORMACIÓN Y DOCUMENTOS, ACTUALIZACIÓN DE DATOS, SEGUROS, SERVICIO / ATENCIÓN, FRAUDES, PSE, GMF, GT5, EMBARGOS).
 Solo usa REVISIÓN HUMANA > INFORMACIÓN INSUFICIENTE cuando el texto sea ruido puro, esté vacío o sea genuinamente ininterpretable.
 
-### 4. REFORZAMIENTO CRÍTICO: TARJETAS DE CRÉDITO Y CANCELACIÓN DE PRODUCTOS
+### 4. REGLA PRIORITARIA: CRÉDITO/CARTERA VS. TARJETA DE CRÉDITO (TC) Y REVERSIÓN
+Antes de asignar cualquier categoría o subcategoría, determina obligatoriamente si el producto involucrado es:
+- TARJETA DE CRÉDITO (TC): tarjeta de crédito, tarjeta, TC, TDC, cupo de tarjeta, pago de tarjeta, compras con tarjeta, extracto de tarjeta, deuda de tarjeta o cualquier operación directa de este producto.
+- CRÉDITO / CARTERA: crédito de consumo, crédito de vivienda/hipotecario, crédito de vehículo, leasing, libranza u otras obligaciones de cartera.
+La palabra "crédito" por sí sola NO implica automáticamente CRÉDITOS / CARTERA (una tarjeta de crédito también es un producto de crédito). Si no queda claro el producto, no lo inventes.
+
+- REGLA DE PROTECCIÓN PARA TARJETA DE CRÉDITO:
+  Si el expediente trata de una tarjeta de crédito / TC, NUNCA lo clasifiques en CRÉDITOS / CARTERA (y NUNCA en CRÉDITOS / CARTERA > REVERSIÓN), incluso si menciona reversión de pagos, devolución de dinero, reintegro, abonos, pagos duplicados, pagos no aplicados, saldos pendientes, ajustes de deuda, intereses, cobros o compras no reconocidas. Conserva producto_detectado: "TARJETA DE CRÉDITO" y usa la categoría/subcategoría correspondiente del catálogo vigente (ej.: PAGOS / ABONOS > APLICACIÓN DE PAGO para pagos no reflejados/duplicados/reversión de pago de TC; TARJETAS > COMPRAS Y DEVOLUCIONES para devolución de compras o cobros a la tarjeta; COMISIONES Y COBROS > INTERESES para intereses cobrados en la tarjeta; FRAUDES para compras no reconocidas; PRODUCTOS > CANCELACIÓN DE PRODUCTOS para cierre de tarjeta).
+
+- CRITERIO ESTRICTO PARA CRÉDITOS / CARTERA > REVERSIÓN:
+  Asigna CRÉDITOS / CARTERA > REVERSIÓN ÚNICAMENTE cuando se cumplan TODAS estas condiciones:
+  1) El producto es un CRÉDITO / CARTERA (consumo, vivienda, vehículo, leasing, libranza u obligación de cartera; NUNCA tarjeta de crédito).
+  2) El cliente solicita EXPRESAMENTE reversar, anular, deshacer o devolver a su cuenta de origen un pago o abono que YA FUE APLICADO a esa obligación de cartera.
+  PROHIBIDO clasificar como CRÉDITOS / CARTERA > REVERSIÓN cuando:
+  - El producto sea una tarjeta de crédito (TC).
+  - El pago NO aparece aplicado o no se ve reflejado -> PAGOS / ABONOS > APLICACIÓN DE PAGO.
+  - El cliente pide rastrear un pago o validar dónde quedó aplicado -> PAGOS / ABONOS > APLICACIÓN DE PAGO.
+  - El cliente pide trasladar un pago entre obligaciones o corregir la aplicación de un pago -> CRÉDITOS / CARTERA > REAPLICACIONES.
+  - El cliente reporta un pago duplicado SIN solicitar expresamente reversión o devolución del dinero -> PAGOS / ABONOS > APLICACIÓN DE PAGO.
+  - El cliente pide reliquidación, ajuste de saldo o aclaración de saldo -> CRÉDITOS / CARTERA > ESTADO DE OBLIGACIÓN / SALDOS.
+  - El cliente pide devolución de compras en comercios, transacciones con tarjeta o fraude -> TARJETAS > COMPRAS Y DEVOLUCIONES o FRAUDES.
+  - Solo aparecen palabras como "devolución", "reintegro", "ajuste" o "error" sin solicitud expresa de reversar un pago previamente aplicado a cartera.
+
+- PRIORIDAD ENTRE SUBCATEGORÍAS DE PAGOS EN CARTERA:
+  1) Pago no reflejado / pendiente / rastreo / validación de aplicación -> PAGOS / ABONOS > APLICACIÓN DE PAGO.
+  2) Cambiar imputación a capital, plazo, cobertura de cuota, corregir aplicación o trasladar entre obligaciones -> CRÉDITOS / CARTERA > REAPLICACIONES.
+  3) Consulta de pagos anteriores / relación histórica -> CRÉDITOS / CARTERA > HISTÓRICO DE PAGO.
+  4) Reliquidación, aclaración o ajuste de saldo de obligación -> CRÉDITOS / CARTERA > ESTADO DE OBLIGACIÓN / SALDOS.
+  5) Solicitud expresa de devolver/reversar un pago ya aplicado a cartera hacia la cuenta de origen -> CRÉDITOS / CARTERA > REVERSIÓN.
+
 - CANCELACIÓN DE TARJETA DE CRÉDITO (PRIORIDAD ALTA):
   Cuando el cliente solicita cancelar, cerrar, terminar o dar de baja su tarjeta de crédito, reporta que no ha podido cancelarla, indica que sigue activa después de solicitar su cancelación, manifiesta que no desea continuar con el producto o pide confirmar que su tarjeta quedó cancelada:
   -> Clasifica SIEMPRE en: PRODUCTOS > CANCELACIÓN DE PRODUCTOS (con producto_detectado: "TARJETA DE CRÉDITO").
   -> NUNCA clasifiques la cancelación de tarjeta de crédito en CONDICIONES, incluso si el cliente menciona como antecedente que ya no le sirven las condiciones o la tasa.
 - DIFERENCIAS OBLIGATORIAS EN TARJETAS:
   1) Cancelar/cerrar el producto tarjeta -> PRODUCTOS > CANCELACIÓN DE PRODUCTOS.
-  2) Cancelación/pago total de la deuda u obligación (sin pedir cierre del plástico) -> PAGOS / ABONOS o CRÉDITOS / CARTERA según el caso, NO cancelación de producto.
+  2) Cancelación/pago total de la deuda u obligación (sin pedir cierre del plástico) -> PAGOS / ABONOS o CRÉDITOS / CARTERA según el producto real, NO cancelación de producto.
   3) Bloqueo, desbloqueo, plástico retenido, deterioro, no entrega o reposición -> TARJETAS > PLÁSTICO Y BLOQUEO.
   4) Cobro de cuota de manejo después de haber cancelado la tarjeta -> CUOTAS DE MANEJO > COBRO POSTERIOR A CANCELACIÓN.
   5) Activación o imposibilidad de activar la tarjeta -> PRODUCTOS > ACTIVACIÓN DE PRODUCTOS.
   6) Cupo (aumento, disminución, cupo no disponible, sobrecupo, avances) -> TARJETAS > CUPO Y AVANCES.
-  7) Compras, devoluciones comerciales o doble cobro en datáfono -> TARJETAS > COMPRAS Y DEVOLUCIONES.
+  7) Compras, devoluciones comerciales, cobros en tarjeta o doble cobro en datáfono -> TARJETAS > COMPRAS Y DEVOLUCIONES.
   8) Compras diferidas, rediferir o número de cuotas de compra -> TARJETAS > DIFERIDOS Y FINANCIACIÓN.
   9) Millas, puntos, LATAM, Socio LATAM, Millas LATAM, LATAM Pass, TuPlus -> TARJETAS > MILLAS Y PROGRAMAS DE LEALTAD.
   10) Inconformidad pura con tasa/condiciones del crédito o tarjeta SIN solicitud de cancelación -> CONDICIONES (subcategoría correspondiente).
 
 ### 5. REGLAS ESPECÍFICAS POR PRODUCTO Y OPERACIÓN
-- PAGOS / ABONOS: Clasifica según la intención real del cliente en la subcategoría correspondiente: APLICACIÓN DE PAGO (pagos no reflejados, no aplicados, demorados o mal aplicados), DÉBITOS AUTOMÁTICOS (inscripción, cancelación o débitos automáticos duplicados) o PAGOS Y RECAUDOS (convenios, facturas o servicios públicos); excluye PSE. Cuando exista una categoría más específica en el catálogo (como CRÉDITOS / CARTERA > REVERSIÓN para devolución/reversión de pagos duplicados o débitos automáticos, REAPLICACIONES para imputación a capital/cuota/plazo, HÁBITO DE PAGO, HISTÓRICO DE PAGO o TRANSFERENCIAS), utiliza esa categoría específica. Las menciones a Itaú no alteran la categoría, el producto ni la clasificación. Si la certeza es baja por falta de información real, enviar a REVISIÓN HUMANA.
+- PAGOS / ABONOS: Clasifica según la intención real del cliente en la subcategoría correspondiente: APLICACIÓN DE PAGO (pagos no reflejados, no aplicados, rastreo, demorados, mal aplicados, duplicados sin solicitud de devolución o reversión de pago de tarjeta de crédito), DÉBITOS AUTOMÁTICOS (inscripción, cancelación o débitos automáticos duplicados) o PAGOS Y RECAUDOS (convenios, facturas o servicios públicos); excluye PSE. Cuando exista una categoría más específica en el catálogo para una obligación de cartera (como CRÉDITOS / CARTERA > REVERSIÓN únicamente para solicitud expresa de reversar/devolver un pago ya aplicado a cartera, REAPLICACIONES para imputación a capital/cuota/plazo o traslado entre obligaciones, HÁBITO DE PAGO, HISTÓRICO DE PAGO o TRANSFERENCIAS), utiliza esa categoría específica. Las menciones a Itaú no alteran la categoría, el producto ni la clasificación. Si la certeza es baja por falta de información real, enviar a REVISIÓN HUMANA.
 - FRAUDES: Operación, compra, débito, transferencia o producto no reconocido, suplantación o hurto -> FRAUDES.
 - PSE: Pago, error o soporte a través de PSE -> PSE (conservando producto_detectado).
 - CDT: Si menciona CDT / certificado de depósito a término / Deceval -> categoría CDT.
@@ -731,11 +776,18 @@ Solo usa REVISIÓN HUMANA > INFORMACIÓN INSUFICIENTE cuando el texto sea ruido 
   Diferenciar PAGO (CDT ya cancelado/liquidado pero no han entregado el dinero) vs CANCELACIÓN (desea cancelar anticipadamente) vs RENDIMIENTOS / INTERESES vs RENOVACIÓN vs CERTIFICADOS TRIBUTARIOS vs CERTIFICADO DE SALDO O DECEVAL vs APERTURA. ¡La palabra "cuenta" NUNCA es CDT!
 - CUOTAS DE MANEJO: Solo cuando exista evidencia real de cargo por manejo/administración/mantenimiento de tarjeta o cuenta. ¡PROHIBIDO clasificar cuotas de crédito, plan de pagos, leasing o vivienda como CUOTAS DE MANEJO!
 - HONORARIOS Y GASTOS DE COBRANZA: Gastos de cobranza, honorarios jurídicos/casa de cobranza, cobro sin mora o posterior al pago.
-- CARTERA / CRÉDITOS: Diferenciar exactamente entre PLAN DE PAGOS, FRECH (incluyendo errores ortográficos FRESH/FRENCH/FRESCH), AUMENTO DE CUOTA, ENDOSO, REVERSIÓN, REAPLICACIONES, HÁBITO DE PAGO, HISTÓRICO DE PAGO, TITULARES, CAMBIO DE FECHA, REFINANCIACIÓN Y ACUERDOS, ESTADO DE OBLIGACIÓN / SALDOS. Si menciona Impuesto Predial en crédito hipotecario o leasing habitacional -> CRÉDITOS / CARTERA (PLAN DE PAGOS o ESTADO DE OBLIGACIÓN / SALDOS según si es liquidación/plan o estado/cobro).
+- CARTERA / CRÉDITOS: Diferenciar exactamente entre PLAN DE PAGOS, FRECH (incluyendo errores ortográficos FRESH/FRENCH/FRESCH), AUMENTO DE CUOTA, ENDOSO, REVERSIÓN (solo devolución/reversión expresa de pago ya aplicado a cartera), REAPLICACIONES, HÁBITO DE PAGO, HISTÓRICO DE PAGO, TITULARES, CAMBIO DE FECHA, REFINANCIACIÓN Y ACUERDOS, ESTADO DE OBLIGACIÓN / SALDOS. Si menciona Impuesto Predial en crédito hipotecario o leasing habitacional -> CRÉDITOS / CARTERA (PLAN DE PAGOS o ESTADO DE OBLIGACIÓN / SALDOS según si es liquidación/plan o estado/cobro).
 - GT5: Cargo a cuenta oficina / cargo cuenta día / RECUP TRANX -> GT5.
 - GMF: 4x1000, marcación, desmarcación o devolución -> GMF.
 - EMBARGOS: Medida cautelar judicial real. ¡NUNCA confundir la expresión "sin embargo" con un embargo financiero!
 - CANALES DIGITALES, TRANSFERENCIAS, INFORMACIÓN Y DOCUMENTOS, ACTUALIZACIÓN DE DATOS, SEGUROS, SERVICIO / ATENCIÓN: asigna la combinación exacta del catálogo vigente.
+
+VALIDACIÓN FINAL OBLIGATORIA ANTES DE ENTREGAR CADA EXPEDIENTE:
+1) Verifica si el cliente habla de TARJETA DE CRÉDITO o de CRÉDITO/CARTERA.
+2) Si es TARJETA DE CRÉDITO, confirma que NO quedó en CRÉDITOS / CARTERA.
+3) Si asignaste CRÉDITOS / CARTERA > REVERSIÓN, confirma que el pago YA fue aplicado a una obligación de cartera y que el cliente pidió EXPRESAMENTE reversarlo o devolver el dinero a su cuenta.
+4) Confirma que no corresponde a una subcategoría más precisa (APLICACIÓN DE PAGO, REAPLICACIONES, HISTÓRICO DE PAGO, ESTADO DE OBLIGACIÓN / SALDOS, COMPRAS Y DEVOLUCIONES o FRAUDES).
+5) Confirma que la categoría y subcategoría existen literalmente en el catálogo vigente.
 
 ### 6. CATÁLOGO VIGENTE (ÚNICAS COMBINACIONES PERMITIDAS)
 ${activeCatalogSummary}
