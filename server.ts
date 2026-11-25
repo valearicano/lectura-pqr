@@ -1,21 +1,76 @@
 import express from 'express';
+import http from 'http';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
-import { analyzePQRSBatchWithMetrics, getEmbedding } from './server/geminiService';
-import { testSupabaseConnection, saveRecordsToSupabase } from './server/supabaseService';
 import { DEFAULT_CATALOG, getCatalogSummary } from './src/services/catalog';
 import { CategoryItem } from './src/types';
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+function resolveServerBinding(): { port: number; host: string } {
+  const args = process.argv.slice(2);
+  let cliPort: number | undefined;
+  let cliHost: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--port' && args[i + 1]) {
+      const parsed = Number(args[i + 1]);
+      if (Number.isFinite(parsed) && parsed > 0) cliPort = parsed;
+      i++;
+    } else if (arg.startsWith('--port=')) {
+      const parsed = Number(arg.slice('--port='.length));
+      if (Number.isFinite(parsed) && parsed > 0) cliPort = parsed;
+    } else if (arg === '--host' && args[i + 1]) {
+      cliHost = args[i + 1];
+      i++;
+    } else if (arg.startsWith('--host=')) {
+      cliHost = arg.slice('--host='.length);
+    }
+  }
+
+  const isProd = process.env.NODE_ENV === 'production';
+  const envPort = Number(process.env.PORT);
+  const nginxPort = Number(process.env.NGINX_PORT);
+  const defaultAppPort = Number(process.env.DEFAULT_APP_PORT) || 3000;
+
+  let port: number;
+  if (cliPort) {
+    port = cliPort;
+  } else if (!isProd) {
+    // In dev mode, never collide with Nginx's listener port if PORT was inherited from the container.
+    port =
+      Number.isFinite(envPort) && envPort > 0 && envPort !== nginxPort
+        ? envPort
+        : defaultAppPort;
+  } else {
+    port = Number.isFinite(envPort) && envPort > 0 ? envPort : 3000;
+  }
+
+  const host = cliHost || '0.0.0.0';
+  return { port, host };
+}
+
+let geminiServicePromise: Promise<typeof import('./server/geminiService')> | null = null;
+function loadGeminiService() {
+  if (!geminiServicePromise) {
+    geminiServicePromise = import('./server/geminiService');
+  }
+  return geminiServicePromise;
+}
+
+let supabaseServicePromise: Promise<typeof import('./server/supabaseService')> | null = null;
+function loadSupabaseService() {
+  if (!supabaseServicePromise) {
+    supabaseServicePromise = import('./server/supabaseService');
+  }
+  return supabaseServicePromise;
+}
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const httpServer = http.createServer(app);
+  const { port: PORT, host: HOST } = resolveServerBinding();
 
   // Middleware for JSON parsing with ample limit for batches
   app.use(express.json({ limit: '50mb' }));
@@ -56,22 +111,43 @@ async function startServer() {
   // 3. Batch Analysis via Gemini API
   app.post('/api/analyze-batch', async (req, res) => {
     try {
-      const { records, useAiSentiment = false } = req.body;
+      const { records } = req.body;
       if (!Array.isArray(records) || records.length === 0) {
         return res.status(400).json({ error: 'Se requiere una lista de registros no vacía' });
       }
 
+      const { analyzePQRSBatchWithMetrics } = await loadGeminiService();
       const catalogSummary = getCatalogSummary(activeCatalog);
-      const { analyses, telemetry } = await analyzePQRSBatchWithMetrics(records, catalogSummary, {
-        useAiSentiment: Boolean(useAiSentiment)
-      });
+      const { analyses, telemetry } = await analyzePQRSBatchWithMetrics(records, catalogSummary);
 
       res.json({ success: true, count: analyses.length, analyses, telemetry });
     } catch (error: any) {
+      const rawMessage = String(error?.message || 'Error desconocido');
+      let readableDetail = rawMessage;
+      let statusCode = 500;
+
+      try {
+        const parsed = JSON.parse(rawMessage);
+        if (parsed?.error?.message) {
+          readableDetail = parsed.error.message;
+        }
+        if (typeof parsed?.error?.code === 'number') {
+          statusCode = parsed.error.code;
+        }
+      } catch {
+        if (rawMessage.toLowerCase().includes('timeout')) {
+          statusCode = 504;
+        } else if (rawMessage.includes('503') || rawMessage.toLowerCase().includes('unavailable')) {
+          statusCode = 503;
+        } else if (rawMessage.includes('429') || rawMessage.toLowerCase().includes('quota')) {
+          statusCode = 429;
+        }
+      }
+
       console.error('Error en /api/analyze-batch:', error);
-      res.status(500).json({
+      res.status(statusCode).json({
         error: 'Error interno en el procesamiento de lote con IA',
-        details: error.message
+        details: readableDetail
       });
     }
   });
@@ -84,6 +160,7 @@ async function startServer() {
         return res.status(400).json({ error: 'Se requiere array de textos' });
       }
 
+      const { getEmbedding } = await loadGeminiService();
       // Process embeddings sequentially or in small parallel slices to respect rate limits
       const embeddings: number[][] = [];
       for (const text of texts) {
@@ -107,6 +184,7 @@ async function startServer() {
 
   // 5. Supabase connection status & Sync
   app.get('/api/supabase/status', async (req, res) => {
+    const { testSupabaseConnection } = await loadSupabaseService();
     const result = await testSupabaseConnection();
     res.json(result);
   });
@@ -116,6 +194,7 @@ async function startServer() {
     if (!Array.isArray(records)) {
       return res.status(400).json({ error: 'Se requiere array de registros' });
     }
+    const { saveRecordsToSupabase } = await loadSupabaseService();
     const result = await saveRecordsToSupabase(records);
     res.json(result);
   });
@@ -123,12 +202,33 @@ async function startServer() {
   // ==========================================
   // VITE MIDDLEWARE / STATIC ASSETS
   // ==========================================
+  let viteServerPromise: Promise<{ middlewares: express.RequestHandler; close: () => Promise<void> }> | null = null;
+
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+    const disableHmr = process.env.DISABLE_HMR === 'true';
+    viteServerPromise = import('vite').then(({ createServer: createViteServer }) =>
+      createViteServer({
+        server: {
+          middlewareMode: true,
+          hmr: disableHmr ? false : { server: httpServer },
+          ...(disableHmr ? { ws: false } : {}),
+        },
+        appType: 'spa',
+      })
+    );
+
+    viteServerPromise.catch(err => {
+      console.error('[Plataforma PQRS] Error inicializando Vite middleware:', err);
     });
-    app.use(vite.middlewares);
+
+    app.use(async (req, res, next) => {
+      try {
+        const vite = await viteServerPromise!;
+        vite.middlewares(req, res, next);
+      } catch (err) {
+        next(err);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
@@ -137,9 +237,33 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Plataforma PQRS] Servidor corriendo en http://0.0.0.0:${PORT}`);
+  httpServer.on('error', (err: NodeJS.ErrnoException) => {
+    console.error(`[Plataforma PQRS] Error en servidor HTTP (${HOST}:${PORT}):`, err);
+    process.exit(1);
   });
+
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`[Plataforma PQRS] Servidor corriendo en http://${HOST}:${PORT}`);
+  });
+
+  const shutdown = async (signal: string) => {
+    console.log(`[Plataforma PQRS] Recibida señal ${signal}, cerrando servidor...`);
+    try {
+      if (viteServerPromise) {
+        const vite = await viteServerPromise.catch(() => null);
+        if (vite) await vite.close();
+      }
+    } finally {
+      httpServer.close(() => process.exit(0));
+      setTimeout(() => process.exit(0), 2000).unref();
+    }
+  };
+
+  process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
+  process.once('SIGINT', () => { void shutdown('SIGINT'); });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error('[Plataforma PQRS] Error fatal al iniciar el servidor:', err);
+  process.exit(1);
+});

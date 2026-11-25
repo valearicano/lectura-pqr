@@ -14,6 +14,7 @@ interface NavbarProps {
   setCurrentTab: (tab: string) => void;
   pendingReviewCount: number;
   totalRecordsCount: number;
+  showUnsavedWarning: boolean;
 }
 
 const IRIS_LOGO_VIDEO_SRC = '/assets/aistudio/ezgif-528addcef8daed10_519cdb5d.mp4';
@@ -117,7 +118,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentTab,
   setCurrentTab,
   pendingReviewCount,
-  totalRecordsCount
+  totalRecordsCount,
+  showUnsavedWarning
 }) => {
   const navItems = [
     { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
@@ -149,10 +151,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </button>
 
-          <div className="flex items-center gap-1.5 text-xs text-amber-200/90 shrink-0">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-300 shrink-0" aria-hidden="true" />
-            <span>Sin guardado: descarga el Excel antes de cerrar</span>
-          </div>
+          {showUnsavedWarning && (
+            <div className="flex items-center gap-1.5 text-xs text-amber-200/90 shrink-0">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-300 shrink-0" aria-hidden="true" />
+              <span>Sin guardado: descarga el Excel antes de cerrar</span>
+            </div>
+          )}
         </div>
 
         {/* Navigation Tabs Bar */}

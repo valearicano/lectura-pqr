@@ -1,6 +1,10 @@
 import * as XLSX from 'xlsx';
 import { EnrichedPQRSRecord, SemanticGroup } from '../types';
-import { inferTipoCasoSFC } from './classifierEngine';
+import {
+  inferTipoCasoSFC,
+  recordRequiresHumanReview,
+  requiresHumanReview
+} from './classifierEngine';
 
 export interface ParsedSheetData {
   headers: string[];
@@ -137,19 +141,13 @@ export function normalizeNivelConfianza(a?: EnrichedPQRSRecord['analisis']): 'AL
 }
 
 /**
- * Normalizes Requiere Revisión strictly to: 'SI' | 'NO'
+ * Normalizes Requiere Revisión strictly to: 'SI' | 'NO' using the single shared review rule
  */
-export function normalizeRequiereRevision(a?: EnrichedPQRSRecord['analisis']): 'SI' | 'NO' {
-  if (!a) return 'NO';
-  if (
-    a.requiere_revision_humana === 'SI' ||
-    a.requiere_revision === true ||
-    a.categoria === 'REVISIÓN HUMANA' ||
-    a.categoria_principal === 'REVISIÓN HUMANA'
-  ) {
-    return 'SI';
-  }
-  return 'NO';
+export function normalizeRequiereRevision(
+  a?: EnrichedPQRSRecord['analisis'],
+  record?: { descripcion_original?: string; resumen_original?: string }
+): 'SI' | 'NO' {
+  return requiresHumanReview(a, record) ? 'SI' : 'NO';
 }
 
 /**
@@ -188,9 +186,9 @@ export function buildExportRow(record: EnrichedPQRSRecord): Record<string, any> 
   const evidencia = a?.evidencia_clasificacion || a?.evidencia_textual || a?.sustento_clasificacion || '';
   const propuestaRespuesta = a?.propuesta_respuesta || '';
   const nivelConfianza = normalizeNivelConfianza(a);
-  const requiereRevision = normalizeRequiereRevision(a);
+  const requiereRevision = normalizeRequiereRevision(a, record);
   const tipoCaso = a
-    ? a.tipo_caso || inferTipoCasoSFC(record, a) || (requiereRevision === 'SI' ? 'Pendiente revisión' : '')
+    ? a.tipo_caso || inferTipoCasoSFC(record, a) || 'Pendiente'
     : 'Sin procesar';
 
   // 3. Append strictly the canonical columns in exact requested order
@@ -219,7 +217,7 @@ export function exportEnrichedExcel(
   filterRevisionOnly = false
 ): void {
   const filteredRecords = filterRevisionOnly
-    ? records.filter(r => normalizeRequiereRevision(r.analisis) === 'SI')
+    ? records.filter(r => recordRequiresHumanReview(r))
     : records;
 
   const exportRows = filteredRecords.map(r => buildExportRow(r));
@@ -275,7 +273,7 @@ export function exportCategoriesSummaryExcel(
     catMap[cat].total++;
     if (r.analisis?.nivel_confianza === 'Alta') catMap[cat].altaConf++;
     if (r.analisis?.posible_inconsistencia || r.analisis?.existe_inconsistencia === 'SI') catMap[cat].inconsistencias++;
-    if (r.analisis?.requiere_revision || r.analisis?.requiere_revision_humana === 'SI' || cat === 'REVISIÓN HUMANA') catMap[cat].revision++;
+    if (recordRequiresHumanReview(r)) catMap[cat].revision++;
   });
 
   const summaryRows = Object.entries(catMap).map(([categoria, stats]) => ({

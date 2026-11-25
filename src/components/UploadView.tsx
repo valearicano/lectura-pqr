@@ -15,10 +15,9 @@ import {
 import { parseExcelFile, exportEnrichedExcel } from '../services/excelService';
 import { detectColumns } from '../services/columnDetector';
 import { validateRecords } from '../services/dataValidator';
-import { clusterRecords } from '../services/similarityService';
 import { SAMPLE_PQRS_DATA } from '../services/sampleData';
-import { classifyPQRDeterministic, buildPQRSAnalysis } from '../services/classifierEngine';
-import { createEmptyBatchTelemetry, mergeBatchTelemetry } from '../services/qualityMetricsService';
+import { recordRequiresHumanReview } from '../services/classifierEngine';
+import { runPQRSAnalysisPipeline } from '../services/analysisOrchestrator';
 import { 
   BatchTelemetryMetrics,
   ColumnDetectionResult, 
@@ -29,15 +28,26 @@ import {
 } from '../types';
 
 interface UploadViewProps {
+  hasExistingRecords?: boolean;
   onProcessingCompleted: (
     records: EnrichedPQRSRecord[],
     groups: SemanticGroup[],
     telemetry?: BatchTelemetryMetrics
   ) => void;
+  onExcelDownloaded?: () => void;
   onNavigate: (tab: string) => void;
 }
 
-export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, onNavigate }) => {
+type PendingReplaceAction =
+  | { type: 'file'; file: File }
+  | { type: 'sample' };
+
+export const UploadView: React.FC<UploadViewProps> = ({
+  hasExistingRecords = false,
+  onProcessingCompleted,
+  onExcelDownloaded,
+  onNavigate
+}) => {
   const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string>('');
   const [rawRows, setRawRows] = useState<Record<string, any>[]>([]);
@@ -48,16 +58,20 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentProgress, setCurrentProgress] = useState<ProcessStatus | null>(null);
   const [completedRecords, setCompletedRecords] = useState<EnrichedPQRSRecord[] | null>(null);
-  const [useAiSentiment, setUseAiSentiment] = useState<boolean>(false);
+  const [usedRulesFallback, setUsedRulesFallback] = useState<boolean>(false);
+  const [pendingReplace, setPendingReplace] = useState<PendingReplaceAction | null>(null);
+  const [fileLoadError, setFileLoadError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 1. Handle File Selection
-  const handleFile = async (selectedFile: File) => {
+  const loadSelectedFile = async (selectedFile: File) => {
     try {
+      setFileLoadError(null);
       setFile(selectedFile);
       setFileName(selectedFile.name);
       setCompletedRecords(null);
+      setUsedRulesFallback(false);
 
       const parsed = await parseExcelFile(selectedFile);
       setHeaders(parsed.headers);
@@ -77,12 +91,21 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
       );
       setValidation(validated);
     } catch (err: any) {
-      alert(`Error al leer el archivo: ${err.message}`);
+      setFileLoadError(`Error al leer el archivo: ${err.message}`);
     }
   };
 
+  const handleFile = (selectedFile: File) => {
+    if (hasExistingRecords) {
+      setPendingReplace({ type: 'file', file: selectedFile });
+      return;
+    }
+    void loadSelectedFile(selectedFile);
+  };
+
   // 2. Load Sample Data button
-  const handleLoadSample = () => {
+  const loadSampleData = () => {
+    setFileLoadError(null);
     const sampleHeaders = [
       'NO_SS',
       'SUBMOTIVO',
@@ -100,6 +123,7 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
       DESC_DETALLADA: item.descripcion_original
     }));
 
+    setFile(null);
     setFileName('PQRS_Inventario_Bancario_Demo.xlsx');
     setHeaders(sampleHeaders);
     setRawRows(sampleRows);
@@ -116,6 +140,33 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
     );
     setValidation(validated);
     setCompletedRecords(null);
+    setUsedRulesFallback(false);
+  };
+
+  const handleLoadSample = () => {
+    if (hasExistingRecords) {
+      setPendingReplace({ type: 'sample' });
+      return;
+    }
+    loadSampleData();
+  };
+
+  const handleConfirmReplace = () => {
+    const action = pendingReplace;
+    setPendingReplace(null);
+    if (!action) return;
+    if (action.type === 'file') {
+      void loadSelectedFile(action.file);
+    } else {
+      loadSampleData();
+    }
+  };
+
+  const handleCancelReplace = () => {
+    setPendingReplace(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   // 3. Manual Column Selector change
@@ -143,14 +194,14 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
   // 4. Start Intelligent Processing Pipeline
   const handleStartAnalysis = async () => {
     if (!validation || validation.registrosValidos.length === 0) {
-      alert('No hay registros válidos para procesar.');
+      setFileLoadError('No hay registros válidos para procesar.');
       return;
     }
 
     setIsProcessing(true);
+    setCompletedRecords(null);
+    setUsedRulesFallback(false);
     const validRecords = validation.registrosValidos;
-    const batchSize = 10;
-    const totalBatches = Math.ceil(validRecords.length / batchSize);
 
     const processStatus: ProcessStatus = {
       id: `proc_${Date.now()}`,
@@ -158,8 +209,8 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
       totalExpedientes: validRecords.length,
       expedientesProcesados: 0,
       loteActual: 1,
-      totalLotes: totalBatches,
-      faseActual: 'Iniciando lectura inteligente con IA...',
+      totalLotes: Math.max(1, Math.ceil(validRecords.length / 10)),
+      faseActual: 'Clasificación: preparando expedientes...',
       porcentaje: 5,
       errores: [],
       archivoNombre: fileName,
@@ -167,151 +218,36 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
     };
     setCurrentProgress({ ...processStatus });
 
-    const analyzedRecords: EnrichedPQRSRecord[] = [];
-    let accumulatedTelemetry: BatchTelemetryMetrics = createEmptyBatchTelemetry();
-
     try {
-      // Step A: Process batches with Gemini Analysis
-      for (let i = 0; i < totalBatches; i++) {
-        const batch = validRecords.slice(i * batchSize, (i + 1) * batchSize);
-        const currentBatchNum = i + 1;
-
-        processStatus.loteActual = currentBatchNum;
-        processStatus.faseActual = `Lectura IA: Procesando lote ${currentBatchNum} de ${totalBatches} (${batch.length} casos)...`;
-        processStatus.porcentaje = Math.round(10 + (i / totalBatches) * 60);
-        setCurrentProgress({ ...processStatus });
-
-        const payload = batch.map(r => {
-          const submotivo = r.columnas_adicionales?.['SUBMOTIVO'] ||
-                            r.columnas_adicionales?.['submotivo'] ||
-                            r.columnas_adicionales?.['SUB_MOTIVO'] ||
-                            r.resumen_original;
-          const producto = r.columnas_adicionales?.['NOMBRE_PRODUCTO'] ||
-                           r.columnas_adicionales?.['nombre_producto'] ||
-                           r.columnas_adicionales?.['PRODUCTO'] ||
-                           r.columnas_adicionales?.['producto'];
-
-          return {
-            numero_expediente: r.numero_expediente,
-            resumen_original: r.resumen_original,
-            descripcion_original: r.descripcion_original, // Maintain original description including abbreviations/informal language
-            submotivo_original: submotivo,
-            producto_original: producto,
-            hash_descripcion: r.hash_descripcion,
-            columnas_adicionales: r.columnas_adicionales
-          };
-        });
-
-        try {
-          const res = await fetch('/api/analyze-batch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ records: payload, useAiSentiment })
-          });
-          const data = await res.json();
-
-          if (data.success && Array.isArray(data.analyses)) {
-            if (data.telemetry) {
-              accumulatedTelemetry = mergeBatchTelemetry(accumulatedTelemetry, data.telemetry);
-              if (Array.isArray(data.telemetry.errores_segunda_validacion)) {
-                data.telemetry.errores_segunda_validacion.forEach((errMsg: string) => {
-                  processStatus.errores.push(`Lote ${currentBatchNum}: ${errMsg}`);
-                });
-              }
-            }
-            batch.forEach((rec, idx) => {
-              const analysis = data.analyses[idx];
-              analyzedRecords.push({
-                ...rec,
-                analisis: analysis,
-                estado_procesamiento: 'COMPLETADO'
-              });
-            });
-          } else {
-            throw new Error(data.details || data.error || 'Error en respuesta de análisis');
-          }
-        } catch (batchErr: any) {
-          console.warn(`Fallback determinista activado para lote ${currentBatchNum}:`, batchErr);
-          processStatus.errores.push(
-            `Lote ${currentBatchNum}: Gemini no disponible (${batchErr?.message || 'error de API'}). Se aplicó clasificación determinista y sentimiento con reglas locales.`
-          );
-          // Apply deterministic classifier without fabricating fake Gemini sentiment
-          batch.forEach(rec => {
-            const submotivo = rec.columnas_adicionales?.['SUBMOTIVO'] ||
-                              rec.columnas_adicionales?.['submotivo'] ||
-                              rec.resumen_original;
-            const producto = rec.columnas_adicionales?.['NOMBRE_PRODUCTO'] ||
-                              rec.columnas_adicionales?.['nombre_producto'];
-            const recordInput = {
-              numero_expediente: rec.numero_expediente,
-              descripcion_original: rec.descripcion_original,
-              resumen_original: rec.resumen_original,
-              submotivo_original: submotivo,
-              producto_original: producto,
-              columnas_adicionales: rec.columnas_adicionales
-            };
-            const classification = classifyPQRDeterministic(recordInput);
-            const analysis = buildPQRSAnalysis(recordInput, classification);
-
-            analyzedRecords.push({
-              ...rec,
-              analisis: analysis,
-              estado_procesamiento: 'COMPLETADO'
-            });
-          });
+      const result = await runPQRSAnalysisPipeline(validRecords, {
+        batchSize: 10,
+        maxConsecutiveGeminiFailures: 2,
+        onProgress: update => {
+          processStatus.loteActual = update.loteActual;
+          processStatus.totalLotes = update.totalLotes;
+          processStatus.expedientesProcesados = update.expedientesProcesados;
+          processStatus.faseActual = update.faseActual;
+          processStatus.porcentaje = update.porcentaje;
+          processStatus.estado = update.estado;
+          setCurrentProgress({ ...processStatus });
         }
+      });
 
-        processStatus.expedientesProcesados = analyzedRecords.length;
-        setCurrentProgress({ ...processStatus });
-      }
-
-      // Step B: Calculate Embeddings & Semantic Similarity
-      processStatus.faseActual = 'Generando embeddings semánticos y calculando similitud...';
-      processStatus.porcentaje = 75;
-      processStatus.estado = 'EMBEDDING';
-      setCurrentProgress({ ...processStatus });
-
-      // Request embeddings from server in batch
-      try {
-        const textDescriptions = analyzedRecords.map(r => r.descripcion_normalizada || r.descripcion_original);
-        const embRes = await fetch('/api/embeddings-batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ texts: textDescriptions })
-        });
-        const embData = await embRes.json();
-        if (embData.success && Array.isArray(embData.embeddings)) {
-          analyzedRecords.forEach((rec, idx) => {
-            rec.embedding = embData.embeddings[idx];
-          });
-        }
-      } catch (embErr) {
-        console.warn('Embeddings fallback local activado:', embErr);
-      }
-
-      // Step C: Cluster and group records
-      processStatus.faseActual = 'Agrupando expedientes con problemáticas similares...';
-      processStatus.porcentaje = 88;
-      processStatus.estado = 'GROUPING';
-      setCurrentProgress({ ...processStatus });
-
-      const { groups, recordsWithGroups } = clusterRecords(analyzedRecords, 0.78);
-
-      // Step D: Complete
-      processStatus.faseActual = 'Procesamiento finalizado exitosamente.';
+      processStatus.faseActual = 'Clasificación completada';
       processStatus.porcentaje = 100;
-      processStatus.estado = processStatus.errores.length > 0 ? 'COMPLETED_WITH_WARNINGS' : 'COMPLETED';
+      processStatus.estado = 'COMPLETED';
       processStatus.finalizadoEn = new Date().toISOString();
       setCurrentProgress({ ...processStatus });
+      setUsedRulesFallback(result.usedRulesFallback);
       setIsProcessing(false);
-      setCompletedRecords(recordsWithGroups);
+      setCompletedRecords(result.records);
 
       // Dispatch results to parent
-      onProcessingCompleted(recordsWithGroups, groups, accumulatedTelemetry);
-    } catch (generalErr: any) {
-      console.error('Fallo en el pipeline general:', generalErr);
+      onProcessingCompleted(result.records, result.groups, result.telemetry);
+    } catch (generalErr) {
+      console.error('[IRIS] Error inesperado en el pipeline de clasificación:', generalErr);
       processStatus.estado = 'FAILED';
-      processStatus.faseActual = `Error fatal: ${generalErr.message}`;
+      processStatus.faseActual = 'No fue posible completar el análisis. Intenta nuevamente.';
       setCurrentProgress({ ...processStatus });
       setIsProcessing(false);
     }
@@ -349,6 +285,7 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
           onChange={e => {
             if (e.target.files && e.target.files[0]) {
               handleFile(e.target.files[0]);
+              e.target.value = '';
             }
           }}
         />
@@ -378,6 +315,16 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
           </button>
         </div>
       </div>
+
+      {fileLoadError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800 flex items-center gap-2"
+        >
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" aria-hidden="true" />
+          <span>{fileLoadError}</span>
+        </div>
+      )}
 
       {/* Validation & Column Detection Panel (visible when file or sample loaded) */}
       {detection && validation && (
@@ -540,23 +487,9 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
           {/* Launch Action */}
           <div className="pt-4 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="text-xs text-slate-500">
-              Se procesarán <strong>{validation.filasValidas}</strong> expedientes válidos en lotes automáticos con Gemini AI.
+              Se procesarán <strong>{validation.filasValidas}</strong> expedientes válidos en lotes automáticos.
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto justify-end">
-              <label
-                htmlFor="checkbox-ai-sentiment"
-                className="inline-flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition-colors"
-              >
-                <input
-                  id="checkbox-ai-sentiment"
-                  type="checkbox"
-                  checked={useAiSentiment}
-                  disabled={isProcessing}
-                  onChange={e => setUseAiSentiment(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-[#2F6BFF] focus:ring-[#2F6BFF]"
-                />
-                <span>Analizar sentimiento con IA (usa cuota de Gemini)</span>
-              </label>
               <button
                 id="btn-iniciar-analisis"
                 onClick={handleStartAnalysis}
@@ -566,7 +499,7 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
                 {isProcessing ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    Procesando Lotes con IA...
+                    Clasificando expedientes...
                   </>
                 ) : (
                   <>
@@ -622,7 +555,7 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
             </div>
             <div className={`flex items-center ${currentProgress.porcentaje >= 60 ? 'text-emerald-400' : 'text-slate-500'}`}>
               <CheckCircle2 className="w-4 h-4 mr-1.5 shrink-0" />
-              <span>Lectura IA</span>
+              <span>Clasificación</span>
             </div>
             <div className={`flex items-center ${currentProgress.porcentaje >= 90 ? 'text-emerald-400' : 'text-slate-500'}`}>
               <CheckCircle2 className="w-4 h-4 mr-1.5 shrink-0" />
@@ -630,45 +563,99 @@ export const UploadView: React.FC<UploadViewProps> = ({ onProcessingCompleted, o
             </div>
           </div>
 
-          {/* Gemini API / Processing Warnings */}
-          {currentProgress.errores.length > 0 && (
-            <div className="p-3 rounded-lg bg-amber-950/60 border border-amber-700/70 text-xs text-amber-200 space-y-1">
-              <div className="font-semibold text-amber-300 flex items-center gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                <span>Advertencias durante el análisis con Gemini ({currentProgress.errores.length})</span>
+          {/* Friendly Completion Summary & Actions */}
+          {completedRecords && !isProcessing && (() => {
+            const revisionCount = completedRecords.filter(r => recordRequiresHumanReview(r)).length;
+            const clasificadosCount = Math.max(0, completedRecords.length - revisionCount);
+            return (
+              <div className="mt-4 pt-4 border-t border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1.5 text-xs">
+                  <div className="text-sm font-bold text-white">
+                    🤖 Clasificación completada
+                  </div>
+                  <div className="text-emerald-400 font-semibold">
+                    ✅ {clasificadosCount} expedientes clasificados automáticamente
+                  </div>
+                  <div className={revisionCount > 0 ? 'text-amber-300 font-semibold' : 'text-slate-300 font-medium'}>
+                    🧑‍💼{' '}
+                    {revisionCount === 0
+                      ? 'Ningún expediente requiere revisión'
+                      : `${revisionCount} expedientes enviados a revisión humana`}
+                  </div>
+                  {usedRulesFallback && (
+                    <p className="text-[11px] text-slate-400 pt-0.5">
+                      Parte del análisis se hizo con reglas internas.
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    id="btn-download-after-process"
+                    onClick={() => {
+                      exportEnrichedExcel(completedRecords);
+                      onExcelDownloaded?.();
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center shadow"
+                  >
+                    <Download className="w-3.5 h-3.5 mr-1.5" />
+                    Descargar PQRS_ANALIZADAS.xlsx
+                  </button>
+                  <button
+                    onClick={() => onNavigate('expedientes')}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center shadow"
+                  >
+                    Explorar Expedientes &rarr;
+                  </button>
+                </div>
               </div>
-              <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-100/90">
-                {currentProgress.errores.slice(0, 3).map((err, idx) => (
-                  <li key={idx}>{err}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+            );
+          })()}
+        </div>
+      )}
 
-          {/* Success Call to Action after Completion */}
-          {completedRecords && !isProcessing && (
-            <div className="mt-4 pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-xs text-emerald-400 font-semibold">
-                ✓ ¡{completedRecords.length} expedientes analizados y enriquecidos!
+      {/* Confirmation Modal before replacing existing loaded records */}
+      {pendingReplace && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="replace-file-modal-title"
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-200 shadow-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" aria-hidden="true" />
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  id="btn-download-after-process"
-                  onClick={() => exportEnrichedExcel(completedRecords)}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center shadow"
+              <div>
+                <h3
+                  id="replace-file-modal-title"
+                  className="text-base font-bold text-[#0B1330]"
                 >
-                  <Download className="w-3.5 h-3.5 mr-1.5" />
-                  Descargar PQRS_ANALIZADAS.xlsx
-                </button>
-                <button
-                  onClick={() => onNavigate('expedientes')}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center shadow"
-                >
-                  Explorar Expedientes &rarr;
-                </button>
+                  ¿Reemplazar archivo cargado?
+                </h3>
+                <p className="text-sm text-slate-600 mt-1.5 leading-relaxed">
+                  Ya hay un archivo cargado. Si continúas, se reemplazará y perderás los ajustes no descargados.
+                </p>
               </div>
             </div>
-          )}
+
+            <div className="pt-2 flex flex-col-reverse sm:flex-row items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleCancelReplace}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReplace}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold shadow-sm transition-colors"
+              >
+                Continuar y reemplazar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

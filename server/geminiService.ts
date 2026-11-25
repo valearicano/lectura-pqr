@@ -3,28 +3,25 @@ import {
   BatchTelemetryMetrics,
   GeminiStageUsage,
   PQRSAnalysis,
-  SegundaValidacionOtrasInfo,
-  SentimientoPQR,
-  TipoCasoSFC
+  SegundaValidacionOtrasInfo
 } from '../src/types';
 import { hashText } from '../src/services/textNormalizer';
 import { getCatalogSummary, validateCatalogPair } from '../src/services/catalog';
 import {
   classifyPQRDeterministic,
-  classifySentimentLocal,
   buildPQRSAnalysis,
   consolidateBatchClassifications,
-  normalizeCategoryName,
-  normalizeSentimiento,
-  normalizeTipoCaso
+  hasExplicitClassificationRule,
+  normalizeCategoryName
 } from '../src/services/classifierEngine';
 import { createEmptyBatchTelemetry } from '../src/services/qualityMetricsService';
 
 const GEMINI_TEXT_MODEL = 'gemini-4-hydrogen';
 const GEMINI_EMBEDDING_MODEL = 'gemini-embedding-2';
 const GEMINI_TIMEOUT_MS = 60000;
+const GEMINI_MAX_RETRIES = 2;
 const SECOND_PASS_BATCH_SIZE = 8;
-const CACHE_SCHEMA_VERSION = 'v9-bdb-otras-2pass';
+const CACHE_SCHEMA_VERSION = 'v10-bdb-otras-2pass-local-sfc';
 
 let aiInstance: GoogleGenAI | null = null;
 
@@ -82,8 +79,6 @@ export interface AnalyzeBatchOptions {
   bypassCache?: boolean;
   /** Optional override for second-pass batch chunk size */
   secondPassBatchSize?: number;
-  /** When true, calls Gemini for sentiment ONLY on cases marked doubtful by local rules (default: false) */
-  useAiSentiment?: boolean;
 }
 
 export interface AnalyzeBatchWithMetricsResult {
@@ -91,22 +86,8 @@ export interface AnalyzeBatchWithMetricsResult {
   telemetry: BatchTelemetryMetrics;
 }
 
-type TipoCasoDecision = {
-  tipo_caso?: TipoCasoSFC;
-  requiere_revision_humana: boolean;
-};
-
-const TIPO_CASO_SFC_RULES = `
-CRITERIO OBLIGATORIO DE TIPO DE CASO (SUPERINTENDENCIA FINANCIERA DE COLOMBIA - campo "tipo_caso"):
-Clasifica cada expediente en exactamente uno de estos valores:
-- "Solicitud" (ajustes no monetarios): el cliente pide información, un documento, un trámite o una gestión sin que haya un cobro cuestionado. Ejemplos: consultas informativas, cuotas de manejo por reconocimiento comercial, certificados, inconvenientes con canales digitales, trámites, paz y salvo, compras, transacciones y comisiones, reaplicación de pagos, diferidos de compras, pagos extraordinarios y temas similares.
-- "Reclamo" (ajustes monetarios): el cliente cuestiona un valor cobrado o pide que se le devuelva o ajuste dinero. Ejemplos: cobros de más que generan molestia, cobros dobles, descuentos indebidos, recobros, cargos, ajuste a cuenta y día, saldos a favor.
-- "REVISION_HUMANA": si la certeza es baja o el caso no se puede decidir claramente entre Solicitud y Reclamo, NO lo fuerces; devuelve "REVISION_HUMANA" para enviarlo a Revisión humana.
-`;
-
-function buildRecordCacheKey(rec: BatchInputRecord, useAiSentiment = false): string {
-  const sentimentMode = useAiSentiment ? 'ai-sent' : 'local-sent';
-  const contextKey = `${CACHE_SCHEMA_VERSION}|${sentimentMode}|${rec.descripcion_original || ''}|${rec.submotivo_original || ''}|${rec.resumen_original || ''}|${rec.producto_original || ''}`;
+function buildRecordCacheKey(rec: BatchInputRecord): string {
+  const contextKey = `${CACHE_SCHEMA_VERSION}|${rec.descripcion_original || ''}|${rec.submotivo_original || ''}|${rec.resumen_original || ''}|${rec.producto_original || ''}`;
   return hashText(contextKey);
 }
 
@@ -161,107 +142,94 @@ function hasExplicitCDTMention(descripcion: string): boolean {
   );
 }
 
-function invokeGenerateContent(
-  generateFn: GenerateContentFn,
-  params: any,
-  timeoutLabel: string
-): Promise<any> {
-  const apiCall = generateFn(params);
-  const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(
-      () => reject(new Error(`Timeout en ${timeoutLabel} (${GEMINI_TIMEOUT_MS / 1000}s)`)),
-      GEMINI_TIMEOUT_MS
-    )
+function isTransientGeminiError(err: any): boolean {
+  const status = Number(err?.status ?? err?.code ?? err?.error?.code ?? 0);
+  if (status === 500 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+  const msg = String(err?.message || err || '').toLowerCase();
+  if (
+    msg.includes('resource_exhausted') ||
+    msg.includes('quota') ||
+    msg.includes('permission_denied') ||
+    msg.includes('api_key_invalid') ||
+    msg.includes('not_found') ||
+    msg.includes('429') ||
+    msg.includes('403') ||
+    msg.includes('401') ||
+    msg.includes('400')
+  ) {
+    return false;
+  }
+  return (
+    msg.includes('timeout en ') ||
+    msg.includes('unavailable') ||
+    msg.includes('high demand') ||
+    msg.includes('overloaded') ||
+    msg.includes('deadline_exceeded') ||
+    msg.includes('temporarily unavailable') ||
+    msg.includes('etimedout') ||
+    msg.includes('econnreset') ||
+    msg.includes('fetch failed') ||
+    msg.includes('"code":503') ||
+    msg.includes('"code":500')
   );
-  return Promise.race([apiCall, timeoutPromise]);
 }
 
-/**
- * Evaluates Superfinanciera tipo_caso ('Solicitud' | 'Reclamo' | 'REVISION_HUMANA') in batch
- * using Gemini for records whose category was resolved by deterministic business rules.
- */
-async function analyzeTipoCasoBatchWithGemini(
+function extractReadableGeminiError(err: any): string {
+  const raw = String(err?.message || err || 'Error desconocido en Gemini').trim();
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed?.error?.message) {
+      const codePrefix = parsed.error.code ? `[${parsed.error.code}] ` : '';
+      return `${codePrefix}${parsed.error.message}`;
+    }
+  } catch {
+    // Keep raw message if not JSON
+  }
+  return raw;
+}
+
+async function invokeGenerateContent(
   generateFn: GenerateContentFn,
-  records: BatchInputRecord[],
-  telemetry: BatchTelemetryMetrics
-): Promise<Map<string, TipoCasoDecision>> {
-  const tipoCasoMap = new Map<string, TipoCasoDecision>();
-  if (records.length === 0) return tipoCasoMap;
+  params: any,
+  timeoutLabel: string,
+  opts?: { timeoutMs?: number; maxRetries?: number }
+): Promise<any> {
+  const timeoutMs = opts?.timeoutMs ?? GEMINI_TIMEOUT_MS;
+  const maxRetries = opts?.maxRetries ?? GEMINI_MAX_RETRIES;
+  let lastError: any;
 
-  const formattedCases = records.map(r => ({
-    expediente: String(r.numero_expediente),
-    resumen: String(r.resumen_original || ''),
-    descripcion: String(r.descripcion_original || r.resumen_original || '')
-  }));
-
-  const prompt = `
-Eres un analista senior de PQRS del sector financiero colombiano (Superintendencia Financiera).
-${TIPO_CASO_SFC_RULES}
-Devuelve exactamente un objeto JSON por cada expediente recibido respetando el mismo número de expediente.
-
-EXPEDIENTES (JSON):
-${JSON.stringify(formattedCases, null, 2)}
-`;
-
-  const response = await invokeGenerateContent(
-    generateFn,
-    {
-      model: GEMINI_TEXT_MODEL,
-      contents: prompt,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              expediente: { type: Type.STRING },
-              tipo_caso: {
-                type: Type.STRING,
-                enum: ['Solicitud', 'Reclamo', 'REVISION_HUMANA'],
-                description:
-                  'Tipo de caso Superfinanciera: Solicitud (no monetario), Reclamo (monetario) o REVISION_HUMANA si no hay certeza'
-              }
-            },
-            required: ['expediente', 'tipo_caso']
-          }
-        }
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const apiCall = Promise.resolve().then(() => generateFn(params));
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Timeout en ${timeoutLabel} (${Math.round(timeoutMs / 1000)}s)`)),
+          timeoutMs
+        );
+      });
+      return await Promise.race([apiCall, timeoutPromise]);
+    } catch (err: any) {
+      lastError = err;
+      const shouldRetry = attempt < maxRetries && isTransientGeminiError(err);
+      if (!shouldRetry) {
+        throw err;
       }
-    },
-    'clasificación Tipo de caso Gemini'
-  );
-
-  recordUsageMetadata(telemetry, 'tipo_caso', records.length, response);
-
-  const parsedText = response.text ? response.text.trim() : '[]';
-  const parsedArray = JSON.parse(parsedText);
-
-  if (Array.isArray(parsedArray)) {
-    records.forEach((rec, idx) => {
-      const match =
-        parsedArray.find(
-          (p: any) => String(p.expediente || p.numero_expediente) === String(rec.numero_expediente)
-        ) || parsedArray[idx];
-      const rawTipo = String(match?.tipo_caso || '').trim();
-      if (rawTipo.toUpperCase() === 'REVISION_HUMANA') {
-        tipoCasoMap.set(String(rec.numero_expediente), {
-          tipo_caso: undefined,
-          requiere_revision_humana: true
-        });
-      } else {
-        const normalized = normalizeTipoCaso(rawTipo);
-        if (normalized) {
-          tipoCasoMap.set(String(rec.numero_expediente), {
-            tipo_caso: normalized,
-            requiere_revision_humana: false
-          });
-        }
+      const backoffMs = 1000 * Math.pow(2, attempt) + Math.floor(Math.random() * 400);
+      console.warn(
+        `[IRIS] Reintento ${attempt + 1}/${maxRetries} en ${timeoutLabel} tras error transitorio: ${err?.message || err}`
+      );
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
+    } finally {
+      if (timer !== undefined) {
+        clearTimeout(timer);
       }
-    });
+    }
   }
 
-  return tipoCasoMap;
+  throw lastError;
 }
 
 interface SecondPassCandidate {
@@ -308,7 +276,6 @@ async function runSecondValidationForOtras(
         producto_detectado: item.initialAnalysis.producto_detectado || 'NO ESPECIFICADO',
         problema_principal: item.initialAnalysis.problema_principal || '',
         solicitud_cliente: item.initialAnalysis.solicitud_cliente || '',
-        tipo_caso: item.initialAnalysis.tipo_caso || 'NO_DEFINIDO',
         evidencia_textual: item.initialAnalysis.evidencia_textual || '',
         confianza: item.initialAnalysis.confianza
       }
@@ -345,7 +312,7 @@ DEBE conservarse "OTRAS" (decision: "CONSERVAR_OTRAS") cuando:
   * EMBARGOS solo ante medida cautelar judicial real (nunca por la conjunción "sin embargo").
   * Cancelación/cierre de tarjeta de crédito o producto -> PRODUCTOS > CANCELACIÓN DE PRODUCTOS (no CONDICIONES).
   * Las menciones a Itaú no son categoría ni producto; clasifica bajo el catálogo vigente del Banco de Bogotá.
-- Reutiliza del bloque ANALISIS_INICIAL_REUTILIZADO los datos que ya sean correctos (tipo_caso, producto, evidencia) cuando no requieran corrección.
+- Reutiliza del bloque ANALISIS_INICIAL_REUTILIZADO los datos que ya sean correctos (producto, evidencia) cuando no requieran corrección.
 - NO redactes respuestas oficiales definitivas del banco; la propuesta de respuesta es únicamente una orientación interna breve para el analista.
 
 ### CATÁLOGO VIGENTE (ÚNICAS COMBINACIONES PERMITIDAS)
@@ -388,10 +355,6 @@ ${JSON.stringify(formattedOtrasCases, null, 2)}
                   },
                   categoria_principal: { type: Type.STRING },
                   subcategoria: { type: Type.STRING },
-                  tipo_caso: {
-                    type: Type.STRING,
-                    enum: ['Solicitud', 'Reclamo', 'REVISION_HUMANA']
-                  },
                   producto_detectado: { type: Type.STRING },
                   problema_principal: { type: Type.STRING },
                   solicitud_cliente: { type: Type.STRING },
@@ -479,19 +442,12 @@ ${JSON.stringify(formattedOtrasCases, null, 2)}
           initial.resumen_requerimiento ||
           `${catalogCheck.categoria}: ${item.rec.descripcion_original.slice(0, 90)}`;
 
-        const rawTipoCaso = String(aiData?.tipo_caso || '').trim();
-        const tipoCasoUncertain = rawTipoCaso.toUpperCase() === 'REVISION_HUMANA';
-        // Reuse pass-1 tipo_caso if pass 2 didn't supply a definitive value
-        const resolvedTipoCaso = tipoCasoUncertain
-          ? undefined
-          : normalizeTipoCaso(rawTipoCaso) ?? initial.tipo_caso;
-
         if (canRecover) {
           const conf =
             typeof aiData?.confianza === 'number'
               ? Math.min(100, Math.max(0, aiData.confianza))
               : Math.max(82, initial.confianza || 82);
-          const reqRev = catalogCheck.categoria === 'REVISIÓN HUMANA' || tipoCasoUncertain;
+          const reqRev = catalogCheck.categoria === 'REVISIÓN HUMANA' || conf < 70;
 
           const segundaValidacionInfo: SegundaValidacionOtrasInfo = {
             ejecutada: true,
@@ -506,7 +462,7 @@ ${JSON.stringify(formattedOtrasCases, null, 2)}
             evidencia_validacion: evidenciaFinal,
             motivo_revision_humana: reqRev
               ? String(aiData?.motivo_revision_humana || '').trim() ||
-                'Se recuperó la categoría, pero requiere confirmación manual del tipo de caso.'
+                'Requiere confirmación manual del analista.'
               : undefined,
             fecha_validacion: nowIso
           };
@@ -515,8 +471,6 @@ ${JSON.stringify(formattedOtrasCases, null, 2)}
             expediente: item.rec.numero_expediente,
             categoria_principal: catalogCheck.categoria,
             subcategoria: catalogCheck.subcategoria,
-            tipo_caso: resolvedTipoCaso,
-            sentimiento: initial.sentimiento,
             resumen_requerimiento: resumenFinal,
             intencion_cliente: solicitudFinal,
             confianza: conf,
@@ -599,12 +553,12 @@ ${JSON.stringify(formattedOtrasCases, null, 2)}
       });
     } catch (err: any) {
       // Resilient error handling: keep initial OTRAS results, never interrupt processing, never invent a category
-      const errMsg = String(err?.message || 'Error desconocido en segunda validación Gemini');
+      const errMsg = extractReadableGeminiError(err);
       telemetry.por_etapa.segunda_validacion_otras.errores += 1;
       telemetry.errores_segunda_validacion.push(
         `Segunda validación OTRAS (${chunk.length} exp.): ${errMsg}`
       );
-      console.warn('[IRIS] Error en segunda validación selectiva de OTRAS (se conserva resultado inicial):', errMsg);
+      console.error('[IRIS] Error en segunda validación selectiva de OTRAS (se conserva resultado inicial):', errMsg);
 
       const nowIso = new Date().toISOString();
 
@@ -615,8 +569,9 @@ ${JSON.stringify(formattedOtrasCases, null, 2)}
         const evidenciaFinal =
           initial.evidencia_textual || item.rec.descripcion_original.slice(0, 120);
         const motivoPermanencia =
-          'Se conservó en OTRAS porque la segunda validación con Gemini no estuvo disponible en este intento (error de cuota o servicio).';
-        const motivoRevision = `Requiere validación humana: el expediente quedó en OTRAS y la segunda validación semántica no pudo completarse (${errMsg}).`;
+          'Se conservó en OTRAS para validación manual del analista.';
+        const motivoRevision =
+          'Requiere validación humana: el expediente quedó en OTRAS para confirmación manual.';
 
         const segundaValidacionInfo: SegundaValidacionOtrasInfo = {
           ejecutada: true,
@@ -627,7 +582,7 @@ ${JSON.stringify(formattedOtrasCases, null, 2)}
           subcategoria_final: initialSub,
           motivo_permanencia_otras: motivoPermanencia,
           resultado_validacion:
-            'Segunda validación interrumpida por error de disponibilidad o cuota de Gemini; se conservó el resultado inicial sin inventar categoría.',
+            'Se conservó el resultado inicial en OTRAS para validación manual.',
           evidencia_validacion: evidenciaFinal,
           motivo_revision_humana: motivoRevision,
           error_api: errMsg,
@@ -648,91 +603,6 @@ ${JSON.stringify(formattedOtrasCases, null, 2)}
   }
 }
 
-export async function analyzeDoubtfulSentimentBatchWithGemini(
-  generateFn: GenerateContentFn,
-  entries: { idx: number; hash: string; rec: BatchInputRecord }[],
-  telemetry: BatchTelemetryMetrics
-): Promise<Map<string, SentimientoPQR>> {
-  const map = new Map<string, SentimientoPQR>();
-  if (entries.length === 0) return map;
-
-  const formattedCases = entries.map(({ rec }) => ({
-    expediente: String(rec.numero_expediente),
-    DESC_DETALLADA: String(rec.descripcion_original || ''),
-    SUBMOTIVO_CONTEXTO: String(rec.submotivo_original || rec.resumen_original || 'No provisto')
-  }));
-
-  const prompt = `
-Analiza ÚNICAMENTE el sentimiento emocional del cliente en cada expediente bancario PQRS.
-Devuelve para cada expediente exactamente uno de estos valores en el campo "sentimiento":
-- "positivo": felicitación, agradecimiento explícito por buena atención o satisfacción clara.
-- "negativo": inconformidad, queja, reclamo, molestia, frustración, demora o perjuicio reportado.
-- "neutro": solicitud administrativa o informativa objetiva sin carga emocional marcada.
-
-EXPEDIENTES (JSON):
-${JSON.stringify(formattedCases, null, 2)}
-`;
-
-  try {
-    const response = await invokeGenerateContent(
-      generateFn,
-      {
-        model: GEMINI_TEXT_MODEL,
-        contents: prompt,
-        config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                expediente: { type: Type.STRING },
-                sentimiento: {
-                  type: Type.STRING,
-                  enum: ['positivo', 'negativo', 'neutro']
-                }
-              },
-              required: ['expediente', 'sentimiento']
-            }
-          }
-        }
-      },
-      'análisis de sentimiento para casos dudosos'
-    );
-
-    telemetry.llamadas_gemini_total += 1;
-    const meta = response?.usageMetadata;
-    if (meta && typeof meta === 'object') {
-      const promptTokens = Number(meta.promptTokenCount || 0);
-      const candidatesTokens = Number(meta.candidatesTokenCount || 0);
-      const totalTokens = Number(meta.totalTokenCount || promptTokens + candidatesTokens);
-      if (promptTokens > 0 || candidatesTokens > 0 || totalTokens > 0) {
-        telemetry.tokens.disponible = true;
-        telemetry.tokens.prompt_tokens += promptTokens;
-        telemetry.tokens.candidates_tokens += candidatesTokens;
-        telemetry.tokens.total_tokens += totalTokens;
-      }
-    }
-
-    const parsedText = response.text ? response.text.trim() : '[]';
-    const parsedArray = JSON.parse(parsedText);
-    if (Array.isArray(parsedArray)) {
-      parsedArray.forEach((item: any) => {
-        const expId = String(item?.expediente || item?.numero_expediente || '').trim();
-        const sent = normalizeSentimiento(item?.sentimiento);
-        if (expId && sent) {
-          map.set(expId, sent);
-        }
-      });
-    }
-  } catch (err: any) {
-    console.warn('Error en análisis opcional de sentimiento con Gemini (se mantiene regla local):', err?.message || err);
-  }
-
-  return map;
-}
-
 export async function analyzePQRSBatchWithMetrics(
   records: BatchInputRecord[],
   catalogSummary?: string,
@@ -742,13 +612,11 @@ export async function analyzePQRSBatchWithMetrics(
   const results: PQRSAnalysis[] = new Array(records.length);
   const pendingIndices: number[] = [];
   const recordsToAnalyze: BatchInputRecord[] = [];
-  const explicitRuleEntries: { idx: number; hash: string; rec: BatchInputRecord }[] = [];
   const bypassCache = Boolean(options?.bypassCache);
-  const useAiSentiment = Boolean(options?.useAiSentiment);
 
-  // 1. Check cache and evaluate explicit business rules first (unchanged engine)
+  // 1. Check cache and evaluate explicit business rules first (ZERO Gemini calls for rule-matched cases)
   records.forEach((rec, idx) => {
-    const hash = buildRecordCacheKey(rec, useAiSentiment);
+    const hash = buildRecordCacheKey(rec);
     if (!bypassCache && analysisCache.has(hash)) {
       const cached = analysisCache.get(hash)!;
       telemetry.cache_hits += 1;
@@ -762,31 +630,8 @@ export async function analyzePQRSBatchWithMetrics(
     // Evaluate business rules ladder
     const deterministic = classifyPQRDeterministic(rec);
 
-    // Explicit business rules that have absolute priority over generic semantic classification
-    const hasExplicitRule =
-      deterministic.categoria_principal === 'FRAUDES' ||
-      deterministic.categoria_principal === 'PSE' ||
-      deterministic.categoria_principal === 'CDT' ||
-      deterministic.categoria_principal === 'GT5' ||
-      deterministic.categoria_principal === 'GMF' ||
-      deterministic.categoria_principal === 'CUOTAS DE MANEJO' ||
-      deterministic.categoria_principal === 'CUOTA DE MANEJO' ||
-      deterministic.categoria_principal === 'HONORARIOS Y GASTOS DE COBRANZA' ||
-      (deterministic.categoria_principal === 'PRODUCTOS' &&
-        (deterministic.subcategoria === 'CANCELACIÓN DE PRODUCTOS' ||
-          deterministic.subcategoria === 'ACTIVACIÓN DE PRODUCTOS')) ||
-      deterministic.categoria_principal === 'CONDICIONES' ||
-      deterministic.categoria_principal === 'CRÉDITOS / CARTERA' ||
-      deterministic.categoria_principal === 'SEGUROS' ||
-      deterministic.categoria_principal === 'EMBARGOS' ||
-      deterministic.categoria_principal === 'TARJETAS' ||
-      deterministic.categoria_principal === 'PAGOS / ABONOS' ||
-      deterministic.categoria_principal === 'COMISIONES Y COBROS' ||
-      deterministic.categoria_principal === 'INFORMACIÓN Y DOCUMENTOS' ||
-      deterministic.categoria_principal === 'ACTUALIZACIÓN DE DATOS' ||
-      deterministic.categoria_principal === 'REVISIÓN HUMANA';
-
-    if (hasExplicitRule) {
+    // Explicit business rules have absolute priority and never consume Gemini quota
+    if (hasExplicitClassificationRule(deterministic)) {
       const analysis = buildPQRSAnalysis(rec, {
         ...deterministic,
         origen_clasificacion: 'CLASIFICACION_INICIAL',
@@ -801,15 +646,17 @@ export async function analyzePQRSBatchWithMetrics(
         }
       });
       results[idx] = analysis;
-      explicitRuleEntries.push({ idx, hash, rec });
+      if (!bypassCache) {
+        analysisCache.set(hash, analysis);
+      }
     } else {
       pendingIndices.push(idx);
       recordsToAnalyze.push(rec);
     }
   });
 
-  // If every single record came from cache, return immediately with zero Gemini calls
-  if (explicitRuleEntries.length === 0 && recordsToAnalyze.length === 0) {
+  // If every single record was resolved by cache or explicit rules, return immediately with ZERO Gemini calls
+  if (recordsToAnalyze.length === 0) {
     return {
       analyses: consolidateBatchClassifications(results),
       telemetry
@@ -819,92 +666,6 @@ export async function analyzePQRSBatchWithMetrics(
   const generateFn: GenerateContentFn =
     options?.generateContentFn ||
     ((params: any) => getAiClient().models.generateContent(params));
-
-  // 2. Run Gemini tipo_caso classification (for explicit rules) in parallel with pass-1 semantic classification
-  const tipoCasoTask =
-    explicitRuleEntries.length > 0
-      ? analyzeTipoCasoBatchWithGemini(
-          generateFn,
-          explicitRuleEntries.map(entry => entry.rec),
-          telemetry
-        )
-      : Promise.resolve(new Map<string, TipoCasoDecision>());
-
-  const applyTipoCasoDecision = (
-    idx: number,
-    hash: string,
-    rec: BatchInputRecord,
-    decision?: TipoCasoDecision
-  ) => {
-    const base = results[idx];
-    const needsReview = Boolean(base.requiere_revision || decision?.requiere_revision_humana);
-    const updatedAnalysis: PQRSAnalysis = {
-      ...base,
-      tipo_caso: decision?.requiere_revision_humana ? undefined : (decision?.tipo_caso ?? base.tipo_caso),
-      requiere_revision: needsReview,
-      requiere_revision_humana: needsReview ? 'SI' : base.requiere_revision_humana,
-      motivo_de_revision:
-        decision?.requiere_revision_humana && !base.motivo_de_revision
-          ? 'No fue posible determinar con certeza si el caso es Solicitud o Reclamo; requiere confirmación manual.'
-          : base.motivo_de_revision,
-      modelo_ia: GEMINI_TEXT_MODEL
-    };
-    results[idx] = updatedAnalysis;
-    if (!bypassCache && (updatedAnalysis.tipo_caso || decision?.requiere_revision_humana)) {
-      analysisCache.set(hash, updatedAnalysis);
-    }
-  };
-
-  const resolveDoubtfulSentimentIfEnabled = async (
-    processedEntries: { idx: number; hash: string; rec: BatchInputRecord }[]
-  ) => {
-    if (!useAiSentiment || processedEntries.length === 0) {
-      return;
-    }
-
-    const doubtfulEntries = processedEntries.filter(({ idx, rec }) => {
-      const analysis = results[idx];
-      const localEval = classifySentimentLocal(
-        rec.descripcion_original,
-        analysis?.categoria_principal || analysis?.categoria
-      );
-      return localEval.dudoso;
-    });
-
-    if (doubtfulEntries.length === 0) {
-      return;
-    }
-
-    const sentimentMap = await analyzeDoubtfulSentimentBatchWithGemini(
-      generateFn,
-      doubtfulEntries,
-      telemetry
-    );
-
-    doubtfulEntries.forEach(({ idx, hash, rec }) => {
-      const aiSent = sentimentMap.get(String(rec.numero_expediente));
-      if (!aiSent) return;
-      results[idx] = {
-        ...results[idx],
-        sentimiento: aiSent
-      };
-      if (!bypassCache && analysisCache.has(hash)) {
-        analysisCache.set(hash, results[idx]);
-      }
-    });
-  };
-
-  if (recordsToAnalyze.length === 0) {
-    const tipoCasoMap = await tipoCasoTask;
-    explicitRuleEntries.forEach(({ idx, hash, rec }) => {
-      applyTipoCasoDecision(idx, hash, rec, tipoCasoMap.get(String(rec.numero_expediente)));
-    });
-    await resolveDoubtfulSentimentIfEnabled(explicitRuleEntries);
-    return {
-      analyses: consolidateBatchClassifications(results),
-      telemetry
-    };
-  }
 
   // 3. Pass 1 semantic classification via Gemini (unchanged prompt, rules & catalog)
   const activeCatalogSummary =
@@ -979,15 +740,11 @@ Solo usa REVISIÓN HUMANA > INFORMACIÓN INSUFICIENTE cuando el texto sea ruido 
 ### 6. CATÁLOGO VIGENTE (ÚNICAS COMBINACIONES PERMITIDAS)
 ${activeCatalogSummary}
 
-### 7. TIPO DE CASO (SUPERINTENDENCIA FINANCIERA)
-${TIPO_CASO_SFC_RULES}
-
-### 8. SALIDA ESTRUCTURADA OBLIGATORIA
+### 7. SALIDA ESTRUCTURADA OBLIGATORIA
 Para cada expediente devuelve un objeto JSON con:
 - expediente: mismo identificador recibido.
 - categoria_principal: nombre EXACTO de una categoría del catálogo vigente.
 - subcategoria: nombre EXACTO de una subcategoría válida perteneciente a esa categoria_principal.
-- tipo_caso: "Solicitud" | "Reclamo" | "REVISION_HUMANA".
 - producto_detectado: producto financiero involucrado (ej. "TARJETA DE CRÉDITO", "CDT", "CUENTA DE AHORROS", "CRÉDITO HIPOTECARIO", "CRÉDITO DE LIBRE INVERSIÓN", "LEASING HABITACIONAL", etc.).
 - problema_principal: causa concreta del caso en frase breve y clara.
 - resumen_requerimiento: máximo 20 palabras explicando la petición o reclamo real del cliente.
@@ -995,13 +752,13 @@ Para cada expediente devuelve un objeto JSON con:
 - evidencia_textual: fragmento breve y fiel de la descripción que sustenta la clasificación.
 - propuesta_respuesta: orientación breve y profesional para el analista (no es respuesta oficial definitiva; o "NO APLICA - REQUIERE VALIDACIÓN INTERNA." para fraudes/embargos; o "NO APLICA - INFORMACIÓN INSUFICIENTE PARA PROPONER RESPUESTA." si es insuficiente).
 - confianza: entero de 0 a 100.
-- requiere_revision_humana: true si la información es insuficiente o si tipo_caso es "REVISION_HUMANA".
+- requiere_revision_humana: true si la información es insuficiente para clasificar con certeza.
 
 EXPEDIENTES A ANALIZAR (JSON):
 ${JSON.stringify(formattedCases, null, 2)}
 `;
 
-  const pass1Task = invokeGenerateContent(
+  const response = await invokeGenerateContent(
     generateFn,
     {
       model: GEMINI_TEXT_MODEL,
@@ -1017,12 +774,6 @@ ${JSON.stringify(formattedCases, null, 2)}
               expediente: { type: Type.STRING },
               categoria_principal: { type: Type.STRING },
               subcategoria: { type: Type.STRING },
-              tipo_caso: {
-                type: Type.STRING,
-                enum: ['Solicitud', 'Reclamo', 'REVISION_HUMANA'],
-                description:
-                  'Tipo de caso según Superfinanciera: Solicitud, Reclamo o REVISION_HUMANA si no hay certeza'
-              },
               producto_detectado: {
                 type: Type.STRING,
                 description: 'Producto financiero detectado en el expediente'
@@ -1054,7 +805,6 @@ ${JSON.stringify(formattedCases, null, 2)}
               'expediente',
               'categoria_principal',
               'subcategoria',
-              'tipo_caso',
               'resumen_requerimiento',
               'confianza',
               'requiere_revision_humana'
@@ -1066,15 +816,7 @@ ${JSON.stringify(formattedCases, null, 2)}
     'respuesta clasificación inicial Gemini'
   );
 
-  const [tipoCasoMap, response] = await Promise.all([tipoCasoTask, pass1Task]);
-
   recordUsageMetadata(telemetry, 'clasificacion_inicial', recordsToAnalyze.length, response);
-
-  if (explicitRuleEntries.length > 0) {
-    explicitRuleEntries.forEach(({ idx, hash, rec }) => {
-      applyTipoCasoDecision(idx, hash, rec, tipoCasoMap.get(String(rec.numero_expediente)));
-    });
-  }
 
   const parsedText = response.text ? response.text.trim() : '[]';
   const parsedArray = JSON.parse(parsedText);
@@ -1131,15 +873,11 @@ ${JSON.stringify(formattedCases, null, 2)}
       }
     }
 
-    const rawTipoCaso = String(aiData?.tipo_caso || '').trim();
-    const tipoCasoUncertain = rawTipoCaso.toUpperCase() === 'REVISION_HUMANA';
-    const tipoCaso = tipoCasoUncertain ? undefined : normalizeTipoCaso(rawTipoCaso);
     const conf = typeof aiData?.confianza === 'number' ? Math.min(100, Math.max(0, aiData.confianza)) : 94;
     const reqRev =
       normalized.categoria_principal === 'REVISIÓN HUMANA' ||
-      tipoCasoUncertain ||
+      conf < 70 ||
       Boolean(aiData?.requiere_revision_humana);
-    const sentimiento = normalizeSentimiento(aiData?.sentimiento);
 
     const isStillOtras = normalized.categoria_principal === 'OTRAS';
 
@@ -1147,8 +885,6 @@ ${JSON.stringify(formattedCases, null, 2)}
       expediente: rec.numero_expediente,
       categoria_principal: normalized.categoria_principal,
       subcategoria: normalized.subcategoria,
-      tipo_caso: tipoCaso,
-      sentimiento,
       resumen_requerimiento:
         aiData?.resumen_requerimiento ||
         `${normalized.categoria_principal}: ${rec.descripcion_original.slice(0, 90)}`,
@@ -1156,9 +892,7 @@ ${JSON.stringify(formattedCases, null, 2)}
       confianza: conf,
       requiere_revision_humana: reqRev,
       motivo_de_revision: reqRev
-        ? tipoCasoUncertain
-          ? 'No fue posible determinar con certeza si el caso es Solicitud o Reclamo; requiere confirmación manual.'
-          : 'Requiere validación humana por información insuficiente.'
+        ? 'Requiere validación humana por información insuficiente o baja confianza.'
         : undefined,
       producto_detectado: aiData?.producto_detectado || rec.producto_original || 'NO ESPECIFICADO',
       problema_principal:
@@ -1186,7 +920,7 @@ ${JSON.stringify(formattedCases, null, 2)}
       modelo_ia: GEMINI_TEXT_MODEL
     };
 
-    const hash = buildRecordCacheKey(rec, useAiSentiment);
+    const hash = buildRecordCacheKey(rec);
     if (isStillOtras) {
       otrosCandidates.push({
         originalIdx,
@@ -1194,7 +928,7 @@ ${JSON.stringify(formattedCases, null, 2)}
         rec,
         initialAnalysis: results[originalIdx]
       });
-    } else if (!bypassCache && (analysis.tipo_caso || tipoCasoUncertain)) {
+    } else if (!bypassCache) {
       analysisCache.set(hash, results[originalIdx]);
     }
   });
@@ -1211,17 +945,6 @@ ${JSON.stringify(formattedCases, null, 2)}
       options?.secondPassBatchSize ?? SECOND_PASS_BATCH_SIZE
     );
   }
-
-  // 5. OPTIONAL AI SENTIMENT: Executed ONLY when useAiSentiment is true AND ONLY for locally doubtful cases
-  const allProcessedEntries = [
-    ...explicitRuleEntries,
-    ...recordsToAnalyze.map((rec, idx) => ({
-      idx: pendingIndices[idx],
-      hash: buildRecordCacheKey(rec, useAiSentiment),
-      rec
-    }))
-  ];
-  await resolveDoubtfulSentimentIfEnabled(allProcessedEntries);
 
   return {
     analyses: consolidateBatchClassifications(results),

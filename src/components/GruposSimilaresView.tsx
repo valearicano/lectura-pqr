@@ -47,29 +47,48 @@ export const GruposSimilaresView: React.FC<GruposSimilaresViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setFilterNewOnly(!filterNewOnly)}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold border flex items-center transition-colors ${
-              filterNewOnly
-                ? 'bg-purple-100 text-purple-800 border-purple-300'
-                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 mr-1.5 text-purple-600" />
-            {filterNewOnly ? 'Mostrando solo Nuevos Patrones' : 'Filtrar Nuevos Patrones'}
-          </button>
+          {records.length > 0 && (
+            <button
+              onClick={() => setFilterNewOnly(!filterNewOnly)}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold border flex items-center transition-colors ${
+                filterNewOnly
+                  ? 'bg-purple-100 text-purple-800 border-purple-300'
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-purple-600" />
+              {filterNewOnly ? 'Mostrando solo Nuevos Patrones' : 'Filtrar Nuevos Patrones'}
+            </button>
+          )}
 
-          <button
-            onClick={() => exportGroupsExcel(groups)}
-            disabled={groups.length === 0}
-            className="px-3 py-2 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
+          <span
+            className="inline-flex"
+            title={records.length === 0 ? 'Primero carga un archivo' : undefined}
           >
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Exportar Grupos a Excel
-          </button>
+            <button
+              onClick={() => exportGroupsExcel(groups)}
+              disabled={records.length === 0 || groups.length === 0}
+              title={records.length === 0 ? 'Primero carga un archivo' : undefined}
+              className="px-3 py-2 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              Exportar Grupos a Excel
+            </button>
+          </span>
         </div>
       </div>
 
+      {records.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 px-6 py-16 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+            <Layers className="w-6 h-6" aria-hidden="true" />
+          </div>
+          <p className="text-sm font-medium text-slate-700">
+            Carga un archivo para ver los expedientes aquí
+          </p>
+        </div>
+      ) : (
+        <>
       {/* Summary KPI Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -224,6 +243,8 @@ export const GruposSimilaresView: React.FC<GruposSimilaresViewProps> = ({
             );
           })}
         </div>
+      )}
+        </>
       )}
     </div>
   );

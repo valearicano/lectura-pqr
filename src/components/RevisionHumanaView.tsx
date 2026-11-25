@@ -10,11 +10,13 @@ import {
   ShieldAlert, 
   Save, 
   ArrowRight,
-  Download
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
-import { EnrichedPQRSRecord, PQRSAnalysis } from '../types';
+import { EnrichedPQRSRecord } from '../types';
 import { getOfficialCatalog } from '../services/catalog';
 import { exportEnrichedExcel } from '../services/excelService';
+import { recordRequiresHumanReview } from '../services/classifierEngine';
 
 interface RevisionHumanaViewProps {
   records: EnrichedPQRSRecord[];
@@ -24,14 +26,8 @@ interface RevisionHumanaViewProps {
 export const RevisionHumanaView: React.FC<RevisionHumanaViewProps> = ({ records, onUpdateRecord }) => {
   const catalog = getOfficialCatalog();
   
-  // Pending review records: Only cases that genuinely require human review or were categorized as REVISIÓN HUMANA
-  const reviewQueue = records.filter(r => 
-    (r.analisis?.categoria === 'REVISIÓN HUMANA' || 
-     r.analisis?.requiere_revision_humana === 'SI' || 
-     r.analisis?.requiere_revision) &&
-    r.analisis?.estado_revision !== 'APROBADO' &&
-    r.analisis?.estado_revision !== 'AJUSTADO'
-  );
+  // Pending review records using the single shared review rule
+  const reviewQueue = records.filter(r => recordRequiresHumanReview(r));
 
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(
     reviewQueue.length > 0 ? reviewQueue[0].id : null
@@ -45,6 +41,17 @@ export const RevisionHumanaView: React.FC<RevisionHumanaViewProps> = ({ records,
   const [editedSummary, setEditedSummary] = useState<string>('');
   const [analystNotes, setAnalystNotes] = useState<string>('');
 
+  // Auto-select first item in queue when records arrive or queue updates
+  React.useEffect(() => {
+    if (reviewQueue.length === 0) {
+      if (selectedRecordId !== null) setSelectedRecordId(null);
+      return;
+    }
+    if (!selectedRecordId || !reviewQueue.some(r => r.id === selectedRecordId)) {
+      setSelectedRecordId(reviewQueue[0].id);
+    }
+  }, [records, selectedRecordId]);
+
   // When selectedRecord changes, populate edit form
   React.useEffect(() => {
     if (currentRecord?.analisis) {
@@ -53,7 +60,7 @@ export const RevisionHumanaView: React.FC<RevisionHumanaViewProps> = ({ records,
       setEditedSummary(currentRecord.analisis.resumen_normalizado);
       setAnalystNotes('');
     }
-  }, [selectedRecordId]);
+  }, [selectedRecordId, currentRecord]);
 
   // Handle Approve without changes
   const handleApproveAsIs = () => {
@@ -64,6 +71,7 @@ export const RevisionHumanaView: React.FC<RevisionHumanaViewProps> = ({ records,
       analisis: {
         ...currentRecord.analisis,
         requiere_revision: false,
+        requiere_revision_humana: 'NO',
         estado_revision: 'APROBADO',
         justificacion: `${currentRecord.analisis.justificacion} [Validado y aprobado por analista humano]`,
         revisado_por: 'Analista PQRS',
@@ -88,9 +96,13 @@ export const RevisionHumanaView: React.FC<RevisionHumanaViewProps> = ({ records,
       analisis: {
         ...currentRecord.analisis,
         categoria: editedCategory,
+        categoria_principal: editedCategory,
         subcategoria: editedSubcategory,
+        subcategoria_ia: editedSubcategory,
         resumen_normalizado: editedSummary,
+        resumen_requerimiento: editedSummary,
         requiere_revision: false,
+        requiere_revision_humana: 'NO',
         estado_revision: 'AJUSTADO',
         justificacion: `Ajuste manual: ${analystNotes || 'Reclasificación validada por analista humano.'}`,
         revisado_por: 'Analista PQRS',
@@ -122,21 +134,38 @@ export const RevisionHumanaView: React.FC<RevisionHumanaViewProps> = ({ records,
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold">
-            {reviewQueue.length} casos pendientes de triaje
-          </span>
-          <button
-            onClick={() => exportEnrichedExcel(records, 'PQRS_EN_REVISION.xlsx', true)}
-            disabled={reviewQueue.length === 0}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
+          {records.length > 0 && (
+            <span className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold">
+              {reviewQueue.length} casos pendientes de triaje
+            </span>
+          )}
+          <span
+            className="inline-flex"
+            title={records.length === 0 ? 'Primero carga un archivo' : reviewQueue.length === 0 ? 'No hay casos pendientes de revisión' : undefined}
           >
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Descargar Pendientes
-          </button>
+            <button
+              onClick={() => exportEnrichedExcel(records, 'PQRS_EN_REVISION.xlsx', true)}
+              disabled={records.length === 0 || reviewQueue.length === 0}
+              title={records.length === 0 ? 'Primero carga un archivo' : reviewQueue.length === 0 ? 'No hay casos pendientes de revisión' : undefined}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              Descargar Pendientes
+            </button>
+          </span>
         </div>
       </div>
 
-      {reviewQueue.length === 0 ? (
+      {records.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 px-6 py-16 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+            <FileSpreadsheet className="w-6 h-6" aria-hidden="true" />
+          </div>
+          <p className="text-sm font-medium text-slate-700">
+            Carga un archivo para ver los expedientes aquí
+          </p>
+        </div>
+      ) : reviewQueue.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500">
           <CheckCircle2 className="w-12 h-12 mx-auto text-emerald-500 mb-3" />
           <h3 className="text-lg font-bold text-slate-900">¡Bandeja al día!</h3>

@@ -2,115 +2,9 @@ import {
   OrigenClasificacion,
   PQRSAnalysis,
   SegundaValidacionOtrasInfo,
-  SentimientoPQR,
   TipoCasoSFC
 } from '../types';
 import { validateCatalogPair } from './catalog';
-
-export interface LocalSentimentResult {
-  sentimiento: SentimientoPQR;
-  dudoso: boolean;
-}
-
-/**
- * Classifies PQR sentiment locally using deterministic linguistic rules.
- * Returns `dudoso: true` only when signals are mixed, subtle, or ambiguous
- * so optional AI sentiment analysis can target exclusively doubtful cases.
- */
-export function classifySentimentLocal(
-  descripcion?: string,
-  categoria?: string
-): LocalSentimentResult {
-  const raw = String(descripcion || '').trim();
-  if (!raw) {
-    return { sentimiento: 'neutro', dudoso: false };
-  }
-
-  const text = raw
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
-  const cat = String(categoria || '')
-    .toUpperCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
-  const positiveRegex =
-    /\b(felicit[a-z]*|excelente\s+(atencion|servicio|gestion|trato|asesoria)|muy\s+buen\s+(servicio|trato|acompanamiento)|gran\s+(servicio|atencion|labor)|destacar\s+la\s+labor|satisfech[oa]|maravillos[oa]|agradecimiento\s+especial|quiero\s+agradecer|deseo\s+agradecer|muchas\s+gracias\s+por\s+(la\s+excelente|su\s+excelente|el\s+buen|la\s+rapida|la\s+pronta))\b/;
-
-  const courtesyRegex =
-    /\b(agradezco|agradeceria|muchas\s+gracias|cordialmente|amablemente|por\s+favor)\b/;
-
-  const strongNegativeRegex =
-    /\b(fraude|suplantacion|clonacion|robo|hurto|estafa|no\s+reconozco|desconozco|pesim[oa]|mal\s+trato|mal\s+servicio|groser[oa]|indignad[oa]|molest[oa]|inaceptable|inconformidad|inconforme|desacuerdo|abuso|cobro\s+indebido|cobro\s+no\s+autorizado|doble\s+cobro|pago\s+duplicado|no\s+se\s+refleja|no\s+reflejado|no\s+aplicado|sin\s+aplicar|demora\s+excesiva|sin\s+respuesta|no\s+me\s+responden|no\s+han\s+respondido|no\s+me\s+han\s+dado\s+respuesta|reporte\s+negativo|datacredito|queja|reclamo|inconveniente|problema|error\s+del\s+banco|falla\s+en|me\s+cobraron|me\s+debitaron|me\s+descontaron|nunca\s+acepte|no\s+autorice|no\s+solicite|aumentaron\s+la\s+cuota|sigue\s+activa|no\s+he\s+podido\s+cancelar|embargo|honorarios|cobranza)\b/;
-
-  const mildNegativeRegex =
-    /\b(demora|tardanza|retraso|bloquead[oa]|rechazad[oa]|devolucion|reversion|reembolso|ajustar|corregir|excesiv[oa]|alto\s+cobro|no\s+puedo|impide|dificultad|preocupacion|urgente|insisto|nuevamente|otra\s+vez|ya\s+van)\b/;
-
-  const neutralRequestRegex =
-    /\b(solicito\s+(certificado|certificacion|paz\s+y\s+salvo|extracto|copia|informacion|actualizacion|cambio\s+de\s+fecha|aumento\s+de\s+cupo|marcacion|desmarcacion|historico|plan\s+de\s+pagos|estado\s+de\s+cuenta)|actualizacion\s+de\s+datos|cambio\s+de\s+fecha\s+de\s+pago|marcar\s+(mi\s+)?cuenta\s+exenta|exencion\s+de(l)?\s+4x1000|desmarcacion\s+de(l)?\s+4x1000|consulta\s+de\s+saldo|informacion\s+sobre|copia\s+del\s+contrato|copia\s+del\s+pagare|certificado\s+tributario|paz\s+y\s+salvo)\b/;
-
-  const hasPositive = positiveRegex.test(text);
-  const hasCourtesy = courtesyRegex.test(text);
-  const hasStrongNegative = strongNegativeRegex.test(text);
-  const hasMildNegative = mildNegativeRegex.test(text);
-  const hasNeutralRequest = neutralRequestRegex.test(text);
-
-  if (hasPositive && (hasStrongNegative || hasMildNegative)) {
-    return { sentimiento: 'negativo', dudoso: true };
-  }
-
-  if (hasPositive) {
-    return { sentimiento: 'positivo', dudoso: false };
-  }
-
-  if (
-    hasStrongNegative ||
-    cat === 'FRAUDES' ||
-    cat === 'HONORARIOS Y GASTOS DE COBRANZA'
-  ) {
-    return { sentimiento: 'negativo', dudoso: false };
-  }
-
-  if (hasMildNegative && (hasCourtesy || hasNeutralRequest)) {
-    return { sentimiento: 'negativo', dudoso: true };
-  }
-
-  if (hasMildNegative) {
-    const mildMatches = text.match(
-      /\b(demora|tardanza|retraso|bloquead[oa]|rechazad[oa]|devolucion|reversion|reembolso|ajustar|corregir|excesiv[oa]|no\s+puedo|impide|dificultad|preocupacion|urgente|insisto|nuevamente|otra\s+vez|ya\s+van)\b/g
-    );
-    if (mildMatches && mildMatches.length >= 2) {
-      return { sentimiento: 'negativo', dudoso: false };
-    }
-    return { sentimiento: 'negativo', dudoso: true };
-  }
-
-  if (hasNeutralRequest) {
-    return { sentimiento: 'neutro', dudoso: false };
-  }
-
-  if (text.length < 15) {
-    return { sentimiento: 'neutro', dudoso: false };
-  }
-
-  return { sentimiento: 'neutro', dudoso: true };
-}
-
-export function normalizeSentimiento(raw?: unknown): SentimientoPQR | undefined {
-  if (typeof raw !== 'string') return undefined;
-  const clean = raw
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
-  if (clean === 'positivo' || clean === 'positive') return 'positivo';
-  if (clean === 'negativo' || clean === 'negative') return 'negativo';
-  if (clean === 'neutro' || clean === 'neutral') return 'neutro';
-  return undefined;
-}
 
 export function normalizeTipoCaso(raw?: unknown): TipoCasoSFC | undefined {
   if (typeof raw !== 'string') return undefined;
@@ -294,6 +188,92 @@ export function inferTipoCasoSFC(
   return 'Solicitud';
 }
 
+/**
+ * Single source of truth for whether a deterministic classification matched an explicit business rule
+ * (and therefore does NOT need a Gemini call).
+ */
+export function hasExplicitClassificationRule(
+  classification: Pick<PQRClassificationResult, 'categoria_principal' | 'subcategoria'>
+): boolean {
+  return (
+    classification.categoria_principal === 'FRAUDES' ||
+    classification.categoria_principal === 'PSE' ||
+    classification.categoria_principal === 'CDT' ||
+    classification.categoria_principal === 'GT5' ||
+    classification.categoria_principal === 'GMF' ||
+    classification.categoria_principal === 'CUOTAS DE MANEJO' ||
+    classification.categoria_principal === 'CUOTA DE MANEJO' ||
+    classification.categoria_principal === 'HONORARIOS Y GASTOS DE COBRANZA' ||
+    (classification.categoria_principal === 'PRODUCTOS' &&
+      (classification.subcategoria === 'CANCELACIÓN DE PRODUCTOS' ||
+        classification.subcategoria === 'ACTIVACIÓN DE PRODUCTOS')) ||
+    classification.categoria_principal === 'CONDICIONES' ||
+    classification.categoria_principal === 'CRÉDITOS / CARTERA' ||
+    classification.categoria_principal === 'SEGUROS' ||
+    classification.categoria_principal === 'EMBARGOS' ||
+    classification.categoria_principal === 'TARJETAS' ||
+    classification.categoria_principal === 'PAGOS / ABONOS' ||
+    classification.categoria_principal === 'COMISIONES Y COBROS' ||
+    classification.categoria_principal === 'INFORMACIÓN Y DOCUMENTOS' ||
+    classification.categoria_principal === 'ACTUALIZACIÓN DE DATOS' ||
+    classification.categoria_principal === 'REVISIÓN HUMANA'
+  );
+}
+
+/**
+ * Single canonical source of truth for human review routing.
+ * Shared across Resumen (DashboardView), Revisión humana tray (RevisionHumanaView),
+ * Navbar badge, UploadView completion summary, ExpedientesView, and Excel REQUIERE REVISIÓN column.
+ */
+export function requiresHumanReview(
+  analisis?: Partial<PQRSAnalysis>,
+  record?: { descripcion_original?: string; resumen_original?: string }
+): boolean {
+  if (!analisis) return false;
+
+  if (
+    analisis.estado_revision === 'APROBADO' ||
+    analisis.estado_revision === 'AJUSTADO' ||
+    analisis.estado_revision === 'MODIFICADO'
+  ) {
+    return false;
+  }
+
+  const cat = analisis.categoria_principal || analisis.categoria || '';
+  if (
+    analisis.requiere_revision === true ||
+    analisis.requiere_revision_humana === 'SI' ||
+    analisis.requiere_revision_humana === true ||
+    cat === 'REVISIÓN HUMANA' ||
+    cat === 'INFORMACIÓN INSUFICIENTE' ||
+    (typeof analisis.confianza === 'number' && analisis.confianza < 70)
+  ) {
+    return true;
+  }
+
+  const resolvedTipoCaso =
+    normalizeTipoCaso(analisis.tipo_caso) ??
+    (record ? inferTipoCasoSFC(record, analisis) : undefined);
+
+  if (record && !resolvedTipoCaso) {
+    return true;
+  }
+
+  if (!record && 'tipo_caso' in analisis && !analisis.tipo_caso) {
+    return true;
+  }
+
+  return false;
+}
+
+export function recordRequiresHumanReview(record: {
+  descripcion_original?: string;
+  resumen_original?: string;
+  analisis?: PQRSAnalysis;
+}): boolean {
+  return requiresHumanReview(record.analisis, record);
+}
+
 export interface PQRInputRecord {
   numero_expediente: string;
   descripcion_original: string;
@@ -311,7 +291,6 @@ export interface PQRClassificationResult {
   categoria_principal: string;
   subcategoria: string;
   tipo_caso?: TipoCasoSFC;
-  sentimiento?: SentimientoPQR;
   resumen_requerimiento: string; // Max 20 words
   intencion_cliente: string;
   confianza: number;
@@ -5137,7 +5116,6 @@ export function validateClassificationConsistency(
       });
       return {
         ...fixed,
-        sentimiento: activeResult.sentimiento,
         categoria_principal: fixed.categoria_principal === 'CDT' ? 'PRODUCTOS' : fixed.categoria_principal,
         subcategoria: fixed.categoria_principal === 'CDT' ? 'CONDICIONES DEL PRODUCTO' : fixed.subcategoria,
         existe_inconsistencia: 'SI',
@@ -5567,8 +5545,27 @@ export function buildPQRSAnalysis(
   const shortSummary = truncateWords(validated.resumen_requerimiento || record.descripcion_original || '', 20);
   const catPrincipal = validated.categoria_principal;
   const subcat = validated.subcategoria;
-  const isHumanReview = catPrincipal === 'REVISIÓN HUMANA' || validated.requiere_revision_humana;
   const conf = Math.min(100, Math.max(0, validated.confianza));
+  const isHumanReviewBase =
+    catPrincipal === 'REVISIÓN HUMANA' ||
+    catPrincipal === 'INFORMACIÓN INSUFICIENTE' ||
+    validated.requiere_revision_humana ||
+    conf < 70;
+
+  const tipoCasoNormalizado =
+    normalizeTipoCaso(validated.tipo_caso ?? result?.tipo_caso) ??
+    (isHumanReviewBase
+      ? undefined
+      : inferTipoCasoSFC(record, {
+          categoria: catPrincipal,
+          categoria_principal: catPrincipal,
+          subcategoria: subcat,
+          confianza: conf,
+          requiere_revision: isHumanReviewBase,
+          requiere_revision_humana: isHumanReviewBase ? 'SI' : 'NO'
+        }));
+
+  const isHumanReview = isHumanReviewBase || !tipoCasoNormalizado;
 
   const propuestaRespuesta =
     validated.propuesta_respuesta ||
@@ -5582,29 +5579,12 @@ export function buildPQRSAnalysis(
       validated.existe_inconsistencia === 'SI'
     );
 
-  const sentimientoNormalizado =
-    normalizeSentimiento(validated.sentimiento ?? result?.sentimiento) ??
-    classifySentimentLocal(record.descripcion_original, catPrincipal).sentimiento;
-  const tipoCasoNormalizado =
-    normalizeTipoCaso(validated.tipo_caso ?? result?.tipo_caso) ??
-    (isHumanReview
-      ? undefined
-      : inferTipoCasoSFC(record, {
-          categoria: catPrincipal,
-          categoria_principal: catPrincipal,
-          subcategoria: subcat,
-          confianza: conf,
-          requiere_revision: isHumanReview,
-          requiere_revision_humana: isHumanReview ? 'SI' : 'NO'
-        }));
-
   return {
     numero_expediente: record.numero_expediente,
     categoria: catPrincipal,
     categoria_principal: catPrincipal,
     subcategoria: subcat,
     tipo_caso: tipoCasoNormalizado,
-    sentimiento: sentimientoNormalizado,
     categoria_ia: catPrincipal,
     subcategoria_ia: subcat,
     resumen_requerimiento: shortSummary,
@@ -5612,7 +5592,11 @@ export function buildPQRSAnalysis(
     confianza: conf,
     requiere_revision_humana: isHumanReview ? 'SI' : 'NO',
     requiere_revision: isHumanReview,
-    motivo_de_revision: validated.motivo_de_revision,
+    motivo_de_revision:
+      validated.motivo_de_revision ||
+      (!tipoCasoNormalizado && !isHumanReviewBase
+        ? 'Tipo de caso pendiente de confirmación manual.'
+        : undefined),
     existe_inconsistencia: validated.existe_inconsistencia || 'NO',
     posible_inconsistencia: validated.existe_inconsistencia === 'SI',
     motivo_inconsistencia: validated.motivo_inconsistencia,

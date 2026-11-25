@@ -6,9 +6,8 @@ import { ExpedientesView } from './components/ExpedientesView';
 import { GruposSimilaresView } from './components/GruposSimilaresView';
 import { RevisionHumanaView } from './components/RevisionHumanaView';
 import { CategoriasView } from './components/CategoriasView';
-import { getInitialDemoState } from './services/sampleData';
-import { inferTipoCasoSFC } from './services/classifierEngine';
-import { EnrichedPQRSRecord, SemanticGroup, SentimientoPQR, TipoCasoSFC } from './types';
+import { inferTipoCasoSFC, recordRequiresHumanReview } from './services/classifierEngine';
+import { EnrichedPQRSRecord, SemanticGroup, TipoCasoSFC } from './types';
 
 function ensureTipoCasoOnRecords(items: EnrichedPQRSRecord[]): EnrichedPQRSRecord[] {
   return items.map(rec => {
@@ -26,11 +25,10 @@ function ensureTipoCasoOnRecords(items: EnrichedPQRSRecord[]): EnrichedPQRSRecor
 }
 
 export default function App() {
-  const initial = getInitialDemoState();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
-  const [records, setRecords] = useState<EnrichedPQRSRecord[]>(() => ensureTipoCasoOnRecords(initial.records));
-  const [groups, setGroups] = useState<SemanticGroup[]>(initial.groups);
-  const [selectedSentimentFilter, setSelectedSentimentFilter] = useState<SentimientoPQR | 'TODOS'>('TODOS');
+  const [records, setRecords] = useState<EnrichedPQRSRecord[]>([]);
+  const [groups, setGroups] = useState<SemanticGroup[]>([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const [selectedTipoCasoFilter, setSelectedTipoCasoFilter] = useState<TipoCasoSFC | 'TODOS'>('TODOS');
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
 
@@ -43,13 +41,19 @@ export default function App() {
   const handleProcessingCompleted = (newRecords: EnrichedPQRSRecord[], newGroups: SemanticGroup[]) => {
     setRecords(ensureTipoCasoOnRecords(newRecords));
     setGroups(newGroups);
+    setHasUnsavedChanges(newRecords.length > 0);
     showNotification(`¡Procesamiento finalizado! Se cargaron y analizaron ${newRecords.length} expedientes.`);
   };
 
   // Update a single record (from Human Review or Detail Modal)
   const handleUpdateRecord = (updatedRecord: EnrichedPQRSRecord) => {
     setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r));
+    setHasUnsavedChanges(true);
     showNotification(`Expediente ${updatedRecord.numero_expediente} actualizado exitosamente.`);
+  };
+
+  const handleExcelDownloaded = () => {
+    setHasUnsavedChanges(false);
   };
 
   // Handle approving a newly detected pattern into the catalog
@@ -58,14 +62,8 @@ export default function App() {
     setCurrentTab('categorias');
   };
 
-  // Pending reviews count: Only cases categorized as REVISIÓN HUMANA or flagged as requiring review
-  const pendingReviewCount = records.filter(r => 
-    (r.analisis?.categoria === 'REVISIÓN HUMANA' || 
-     r.analisis?.requiere_revision_humana === 'SI' || 
-     r.analisis?.requiere_revision) &&
-    r.analisis?.estado_revision !== 'APROBADO' &&
-    r.analisis?.estado_revision !== 'AJUSTADO'
-  ).length;
+  // Pending reviews count using the single shared review rule
+  const pendingReviewCount = records.filter(r => recordRequiresHumanReview(r)).length;
 
   return (
     <div className="min-h-screen bg-[#F5F7FC] text-[#0B1330] font-sans flex flex-col selection:bg-[#2F6BFF]/15 selection:text-[#0B1330]">
@@ -75,6 +73,7 @@ export default function App() {
         setCurrentTab={setCurrentTab}
         pendingReviewCount={pendingReviewCount}
         totalRecordsCount={records.length}
+        showUnsavedWarning={records.length > 0 && hasUnsavedChanges}
       />
 
       {/* Floating Notification Toast */}
@@ -95,10 +94,7 @@ export default function App() {
             records={records}
             groups={groups}
             onNavigate={(tab) => setCurrentTab(tab)}
-            onSelectSentiment={(sentiment) => {
-              setSelectedSentimentFilter(sentiment);
-              setCurrentTab('expedientes');
-            }}
+            onExcelDownloaded={handleExcelDownloaded}
             onSelectTipoCaso={(tipoCaso) => {
               setSelectedTipoCasoFilter(tipoCaso);
               setCurrentTab('expedientes');
@@ -108,7 +104,9 @@ export default function App() {
 
         {currentTab === 'upload' && (
           <UploadView
+            hasExistingRecords={records.length > 0}
             onProcessingCompleted={handleProcessingCompleted}
+            onExcelDownloaded={handleExcelDownloaded}
             onNavigate={(tab) => setCurrentTab(tab)}
           />
         )}
@@ -116,11 +114,10 @@ export default function App() {
         {currentTab === 'expedientes' && (
           <ExpedientesView
             records={records}
-            initialSentimentFilter={selectedSentimentFilter}
-            onSentimentFilterChange={setSelectedSentimentFilter}
             initialTipoCasoFilter={selectedTipoCasoFilter}
             onTipoCasoFilterChange={setSelectedTipoCasoFilter}
             onUpdateRecord={handleUpdateRecord}
+            onExcelDownloaded={handleExcelDownloaded}
             onNavigateToReview={() => setCurrentTab('revision')}
           />
         )}

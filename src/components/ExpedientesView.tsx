@@ -13,19 +13,24 @@ import {
   ChevronRight,
   Sparkles,
   Smile,
-  Meh
+  Meh,
+  FileSpreadsheet
 } from 'lucide-react';
-import { EnrichedPQRSRecord, CATEGORIAS_OFICIALES_16, SentimientoPQR, TipoCasoSFC } from '../types';
+import { EnrichedPQRSRecord, CATEGORIAS_OFICIALES_16, TipoCasoSFC } from '../types';
 import { exportEnrichedExcel, exportCategoriesSummaryExcel } from '../services/excelService';
-import { inferTipoCasoSFC, detectMencionaItau, ETIQUETA_MENCIONA_ITAU } from '../services/classifierEngine';
+import {
+  inferTipoCasoSFC,
+  detectMencionaItau,
+  ETIQUETA_MENCIONA_ITAU,
+  recordRequiresHumanReview
+} from '../services/classifierEngine';
 
 interface ExpedientesViewProps {
   records: EnrichedPQRSRecord[];
-  initialSentimentFilter?: SentimientoPQR | 'TODOS';
-  onSentimentFilterChange?: (sentiment: SentimientoPQR | 'TODOS') => void;
   initialTipoCasoFilter?: TipoCasoSFC | 'TODOS';
   onTipoCasoFilterChange?: (tipoCaso: TipoCasoSFC | 'TODOS') => void;
   onUpdateRecord?: (updated: EnrichedPQRSRecord) => void;
+  onExcelDownloaded?: () => void;
   onNavigateToReview?: () => void;
 }
 
@@ -39,38 +44,25 @@ const TIPO_CASO_META: Record<
 
 export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
   records,
-  initialSentimentFilter = 'TODOS',
-  onSentimentFilterChange,
   initialTipoCasoFilter = 'TODOS',
   onTipoCasoFilterChange,
   onUpdateRecord,
+  onExcelDownloaded,
   onNavigateToReview
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTipoPqr, setSelectedTipoPqr] = useState<string>('TODOS');
   const [selectedCategory, setSelectedCategory] = useState<string>('TODAS');
   const [selectedConfidence, setSelectedConfidence] = useState<string>('TODAS');
-  const [selectedSentiment, setSelectedSentiment] = useState<SentimientoPQR | 'TODOS'>(initialSentimentFilter);
   const [selectedTipoCaso, setSelectedTipoCaso] = useState<TipoCasoSFC | 'TODOS'>(initialTipoCasoFilter);
   const [filterInconsistency, setFilterInconsistency] = useState<string>('TODOS');
   const [filterRequiresReview, setFilterRequiresReview] = useState<string>('TODOS');
   const [filterGroup, setFilterGroup] = useState<string>('TODOS');
 
   useEffect(() => {
-    setSelectedSentiment(initialSentimentFilter);
-    setCurrentPage(1);
-  }, [initialSentimentFilter]);
-
-  useEffect(() => {
     setSelectedTipoCaso(initialTipoCasoFilter);
     setCurrentPage(1);
   }, [initialTipoCasoFilter]);
-
-  const handleSentimentChange = (value: SentimientoPQR | 'TODOS') => {
-    setSelectedSentiment(value);
-    onSentimentFilterChange?.(value);
-    setCurrentPage(1);
-  };
 
   const handleTipoCasoChange = (value: TipoCasoSFC | 'TODOS') => {
     setSelectedTipoCaso(value);
@@ -118,10 +110,6 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
       return false;
     }
 
-    if (selectedSentiment !== 'TODOS' && r.analisis?.sentimiento !== selectedSentiment) {
-      return false;
-    }
-
     if (selectedTipoCaso !== 'TODOS') {
       const resolvedTipo = r.analisis?.tipo_caso ?? (r.analisis ? inferTipoCasoSFC(r, r.analisis) : undefined);
       if (resolvedTipo !== selectedTipoCaso) {
@@ -132,8 +120,9 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
     if (filterInconsistency === 'SI' && !(r.analisis?.existe_inconsistencia === 'SI' || r.analisis?.posible_inconsistencia)) return false;
     if (filterInconsistency === 'NO' && (r.analisis?.existe_inconsistencia === 'SI' || r.analisis?.posible_inconsistencia)) return false;
 
-    if (filterRequiresReview === 'SI' && !(r.analisis?.requiere_revision_humana === 'SI' || r.analisis?.requiere_revision)) return false;
-    if (filterRequiresReview === 'NO' && (r.analisis?.requiere_revision_humana === 'SI' || r.analisis?.requiere_revision)) return false;
+    const needsReview = recordRequiresHumanReview(r);
+    if (filterRequiresReview === 'SI' && !needsReview) return false;
+    if (filterRequiresReview === 'NO' && needsReview) return false;
 
     if (filterGroup !== 'TODOS' && r.grupo_id !== filterGroup) return false;
 
@@ -154,39 +143,77 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">Explorador de Expedientes PQRS</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Total en inventario: <strong>{records.length}</strong> | Mostrando: <strong>{filtered.length}</strong> filtrados
-          </p>
+          {records.length > 0 ? (
+            <p className="text-xs text-slate-500 mt-0.5">
+              Total en inventario: <strong>{records.length}</strong> | Mostrando: <strong>{filtered.length}</strong> filtrados
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500 mt-0.5">
+              Sin expedientes cargados todavía
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => exportEnrichedExcel(records, 'PQRS_ANALIZADAS.xlsx', false)}
-            disabled={records.length === 0}
-            className="px-3 py-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
+          <span
+            className="inline-flex"
+            title={records.length === 0 ? 'Primero carga un archivo' : undefined}
           >
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Excel Completo
-          </button>
-          <button
-            onClick={() => exportEnrichedExcel(records, 'PQRS_REQUIEREN_REVISION.xlsx', true)}
-            disabled={records.length === 0}
-            className="px-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
+            <button
+              onClick={() => {
+                exportEnrichedExcel(records, 'PQRS_ANALIZADAS.xlsx', false);
+                onExcelDownloaded?.();
+              }}
+              disabled={records.length === 0}
+              title={records.length === 0 ? 'Primero carga un archivo' : undefined}
+              className="px-3 py-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              Excel Completo
+            </button>
+          </span>
+          <span
+            className="inline-flex"
+            title={records.length === 0 ? 'Primero carga un archivo' : undefined}
           >
-            <AlertCircle className="w-3.5 h-3.5 mr-1.5" />
-            Solo Revisión
-          </button>
-          <button
-            onClick={() => exportCategoriesSummaryExcel(records)}
-            disabled={records.length === 0}
-            className="px-3 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
+            <button
+              onClick={() => exportEnrichedExcel(records, 'PQRS_REQUIEREN_REVISION.xlsx', true)}
+              disabled={records.length === 0}
+              title={records.length === 0 ? 'Primero carga un archivo' : undefined}
+              className="px-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
+            >
+              <AlertCircle className="w-3.5 h-3.5 mr-1.5" />
+              Solo Revisión
+            </button>
+          </span>
+          <span
+            className="inline-flex"
+            title={records.length === 0 ? 'Primero carga un archivo' : undefined}
           >
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Resumen Categorías
-          </button>
+            <button
+              onClick={() => exportCategoriesSummaryExcel(records)}
+              disabled={records.length === 0}
+              title={records.length === 0 ? 'Primero carga un archivo' : undefined}
+              className="px-3 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold flex items-center shadow-sm"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              Resumen Categorías
+            </button>
+          </span>
         </div>
       </div>
 
+      {records.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 px-6 py-16 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+            <FileSpreadsheet className="w-6 h-6" aria-hidden="true" />
+          </div>
+          <p className="text-sm font-medium text-slate-700">
+            Carga un archivo para ver los expedientes aquí
+          </p>
+        </div>
+      ) : (
+        <>
       {/* Filter Bar */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
         <div className="flex flex-col md:flex-row items-center gap-3">
@@ -203,14 +230,13 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
           </div>
 
           {/* Quick Clear */}
-          {(searchTerm || selectedTipoPqr !== 'TODOS' || selectedCategory !== 'TODAS' || selectedConfidence !== 'TODAS' || selectedSentiment !== 'TODOS' || selectedTipoCaso !== 'TODOS' || filterInconsistency !== 'TODOS' || filterRequiresReview !== 'TODOS' || filterGroup !== 'TODOS') && (
+          {(searchTerm || selectedTipoPqr !== 'TODOS' || selectedCategory !== 'TODAS' || selectedConfidence !== 'TODAS' || selectedTipoCaso !== 'TODOS' || filterInconsistency !== 'TODOS' || filterRequiresReview !== 'TODOS' || filterGroup !== 'TODOS') && (
             <button
               onClick={() => {
                 setSearchTerm('');
                 setSelectedTipoPqr('TODOS');
                 setSelectedCategory('TODAS');
                 setSelectedConfidence('TODAS');
-                handleSentimentChange('TODOS');
                 handleTipoCasoChange('TODOS');
                 setFilterInconsistency('TODOS');
                 setFilterRequiresReview('TODOS');
@@ -351,7 +377,7 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
                   const catPrincipal = a?.categoria_principal || a?.categoria || 'Sin procesar';
                   const subcat = a?.subcategoria || 'General';
                   const resumenReq = a?.resumen_requerimiento || a?.resumen_normalizado || r.descripcion_original.slice(0, 100);
-                  const needsReview = a?.requiere_revision_humana === 'SI' || a?.requiere_revision || catPrincipal === 'REVISIÓN HUMANA';
+                  const needsReview = recordRequiresHumanReview(r);
 
                   return (
                     <tr 
@@ -390,7 +416,7 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
                               </span>
                             );
                           }
-                          return <span className="text-slate-400">Revisión humana</span>;
+                          return <span className="text-slate-400">Pendiente</span>;
                         })()}
                       </td>
                       <td className="py-3 px-3.5 text-center whitespace-nowrap">
@@ -458,6 +484,8 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
           </div>
         )}
       </div>
+        </>
+      )}
 
       {/* Expediente Detail Modal (Section 26) */}
       {activeRecord && (
@@ -569,11 +597,11 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
                         Confianza: {activeRecord.analisis.confianza}%
                       </span>
                       <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
-                        activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision
+                        recordRequiresHumanReview(activeRecord)
                           ? 'bg-amber-400 text-slate-900'
                           : 'bg-emerald-500 text-white'
                       }`}>
-                        Revisión Humana: {activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision ? 'SÍ' : 'NO'}
+                        Revisión Humana: {recordRequiresHumanReview(activeRecord) ? 'SÍ' : 'NO'}
                       </span>
                     </div>
                   </div>
@@ -598,16 +626,16 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
   expediente: activeRecord.numero_expediente,
   categoria_principal: activeRecord.analisis.categoria_principal || activeRecord.analisis.categoria,
   subcategoria: activeRecord.analisis.subcategoria,
-  ...(activeRecord.analisis.sentimiento ? { sentimiento: activeRecord.analisis.sentimiento } : {}),
+  tipo_caso: activeRecord.analisis.tipo_caso ?? inferTipoCasoSFC(activeRecord, activeRecord.analisis) ?? 'Pendiente',
   resumen_requerimiento: activeRecord.analisis.resumen_requerimiento || activeRecord.analisis.resumen_normalizado,
   confianza: activeRecord.analisis.confianza,
-  requiere_revision_humana: Boolean(activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision)
+  requiere_revision_humana: recordRequiresHumanReview(activeRecord)
 }, null, 2)}
                     </pre>
                   </div>
                 </div>
 
-                {/* Grid con Producto, Tipo PQR, Motivo, Submotivo, Sentimiento */}
+                {/* Grid con Producto, Tipo PQR, Motivo, Submotivo y Tipo de caso */}
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
                   <div className="p-2.5 rounded-lg bg-white border border-slate-200">
                     <span className="text-slate-500 block font-medium text-[11px]">Tipo de PQR:</span>
@@ -648,7 +676,7 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
                           </span>
                         );
                       }
-                      return <span className="font-medium text-slate-400 text-sm">Pendiente revisión</span>;
+                      return <span className="font-medium text-slate-400 text-sm">Pendiente</span>;
                     })()}
                   </div>
                 </div>
@@ -751,12 +779,6 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
                               {activeRecord.analisis.segunda_validacion_otras.motivo_revision_humana}
                             </p>
                           )}
-                          {activeRecord.analisis.segunda_validacion_otras.error_api && (
-                            <p className="text-rose-700">
-                              <strong>Detalle técnico del error:</strong>{' '}
-                              {activeRecord.analisis.segunda_validacion_otras.error_api}
-                            </p>
-                          )}
                         </div>
                       )}
                     </div>
@@ -790,21 +812,21 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
 
                   {/* Revisión Humana */}
                   <div className={`p-3 rounded-lg border ${
-                    activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision
+                    recordRequiresHumanReview(activeRecord)
                       ? 'bg-amber-50/70 border-amber-200'
                       : 'bg-slate-50 border-slate-200'
                   }`}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-bold text-slate-800">Requiere Revisión Humana:</span>
                       <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${
-                        activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision
+                        recordRequiresHumanReview(activeRecord)
                           ? 'bg-amber-200 text-amber-900'
                           : 'bg-emerald-100 text-emerald-800'
                       }`}>
-                        {activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision ? 'SÍ' : 'NO'}
+                        {recordRequiresHumanReview(activeRecord) ? 'SÍ' : 'NO'}
                       </span>
                     </div>
-                    {(activeRecord.analisis.requiere_revision_humana === 'SI' || activeRecord.analisis.requiere_revision) && (
+                    {recordRequiresHumanReview(activeRecord) && (
                       <p className="text-amber-950 mt-1 text-[11px]">
                         {activeRecord.analisis.motivo_de_revision || 'Caso con elementos atípicos, ambigüedad o alerta que amerita validación por un analista humano.'}
                       </p>
@@ -865,8 +887,8 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
                 </div>
                 <div>
                   <span className="text-slate-500 block">Requiere revisión humana:</span>
-                  <span className={`font-bold ${activeRecord.analisis?.requiere_revision ? 'text-amber-600' : 'text-slate-700'}`}>
-                    {activeRecord.analisis?.requiere_revision ? 'SÍ (Enviado a bandeja de triaje)' : 'NO'}
+                  <span className={`font-bold ${recordRequiresHumanReview(activeRecord) ? 'text-amber-600' : 'text-slate-700'}`}>
+                    {recordRequiresHumanReview(activeRecord) ? 'SÍ (Enviado a bandeja de triaje)' : 'NO'}
                   </span>
                 </div>
               </div>
@@ -880,7 +902,7 @@ export const ExpedientesView: React.FC<ExpedientesViewProps> = ({
               >
                 Cerrar
               </button>
-              {activeRecord.analisis?.requiere_revision && onNavigateToReview && (
+              {recordRequiresHumanReview(activeRecord) && onNavigateToReview && (
                 <button
                   onClick={() => {
                     setActiveRecord(null);

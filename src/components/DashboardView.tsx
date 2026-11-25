@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   FileText,
+  FileSpreadsheet,
   CheckCircle,
   AlertCircle,
   Layers,
@@ -10,9 +11,9 @@ import {
   Smile,
   Meh
 } from 'lucide-react';
-import { EnrichedPQRSRecord, SemanticGroup, SentimientoPQR, TipoCasoSFC } from '../types';
+import { EnrichedPQRSRecord, SemanticGroup, TipoCasoSFC } from '../types';
 import { exportEnrichedExcel, exportCategoriesSummaryExcel } from '../services/excelService';
-import { inferTipoCasoSFC } from '../services/classifierEngine';
+import { inferTipoCasoSFC, recordRequiresHumanReview } from '../services/classifierEngine';
 
 // Preserve exported helper import reference for consistency
 void exportCategoriesSummaryExcel;
@@ -21,7 +22,7 @@ interface DashboardViewProps {
   records: EnrichedPQRSRecord[];
   groups: SemanticGroup[];
   onNavigate: (tab: string) => void;
-  onSelectSentiment?: (sentiment: SentimientoPQR) => void;
+  onExcelDownloaded?: () => void;
   onSelectTipoCaso?: (tipoCaso: TipoCasoSFC) => void;
 }
 
@@ -29,15 +30,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   records,
   groups,
   onNavigate,
-  onSelectSentiment,
+  onExcelDownloaded,
   onSelectTipoCaso
 }) => {
-  void onSelectSentiment;
-
   const total = records.length;
   const procesados = records.filter(r => r.analisis).length;
   const pendientes = total - procesados;
-  const conRevision = records.filter(r => r.analisis?.requiere_revision).length;
+  const conRevision = records.filter(r => recordRequiresHumanReview(r)).length;
   const inconsistencias = records.filter(r => r.analisis?.posible_inconsistencia).length;
   const altaConfianza = records.filter(r => r.analisis?.nivel_confianza === 'Alta').length;
   const bajaConfianza = records.filter(r => r.analisis?.nivel_confianza === 'Baja').length;
@@ -166,21 +165,53 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <FileText className="w-4 h-4 shrink-0" aria-hidden="true" />
               Cargar archivo Excel
             </button>
-            {total > 0 && (
+            <span
+              className="inline-flex"
+              title={total === 0 ? 'Primero carga un archivo' : undefined}
+            >
               <button
                 id="btn-dash-export"
                 type="button"
-                onClick={() => exportEnrichedExcel(records)}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/16 text-white rounded-xl text-sm font-medium border border-white/15 transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#22D3EE]"
+                disabled={total === 0}
+                title={total === 0 ? 'Primero carga un archivo' : undefined}
+                onClick={() => {
+                  exportEnrichedExcel(records);
+                  onExcelDownloaded?.();
+                }}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/16 disabled:opacity-45 disabled:hover:bg-white/10 disabled:cursor-not-allowed text-white rounded-xl text-sm font-medium border border-white/15 transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#22D3EE]"
               >
                 <Download className="w-4 h-4 shrink-0" aria-hidden="true" />
                 Descargar Excel con resultados
               </button>
-            )}
+            </span>
           </div>
         </div>
       </section>
 
+      {total === 0 ? (
+        <section className={`${cardSurface} px-6 py-16 text-center`}>
+          <div className="max-w-md mx-auto flex flex-col items-center">
+            <div className="w-14 h-14 rounded-2xl bg-[#2F6BFF]/10 text-[#2F6BFF] flex items-center justify-center mb-4">
+              <FileSpreadsheet className="w-7 h-7" aria-hidden="true" />
+            </div>
+            <h2 className="text-lg font-semibold text-[#0B1330]">
+              Aún no has cargado expedientes
+            </h2>
+            <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">
+              Sube un archivo Excel para analizar, clasificar y revisar tus solicitudes PQRS.
+            </p>
+            <button
+              type="button"
+              onClick={() => onNavigate('upload')}
+              className="mt-6 inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#2F6BFF] hover:bg-[#2558DB] text-white rounded-xl text-sm font-semibold shadow-[0_4px_14px_rgba(47,107,255,0.28)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#22D3EE]"
+            >
+              <FileText className="w-4 h-4 shrink-0" aria-hidden="true" />
+              Cargar archivo Excel
+            </button>
+          </div>
+        </section>
+      ) : (
+        <>
       {/* 1) Tarjetas "Atención prioritaria" */}
       <section aria-labelledby="heading-acciones" className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
@@ -654,6 +685,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         )}
       </section>
+        </>
+      )}
     </div>
   );
 };

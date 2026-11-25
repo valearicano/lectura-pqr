@@ -4,6 +4,7 @@ import {
   GeminiStageUsage,
   OrigenClasificacion
 } from '../types';
+import { recordRequiresHumanReview } from './classifierEngine';
 
 export interface ClassificationQualityMetrics {
   totalProcesados: number;
@@ -191,11 +192,7 @@ export function computeClassificationQualityMetrics(
       motivosMap.set(normalizedReason, (motivosMap.get(normalizedReason) || 0) + 1);
     }
 
-    const needsReview =
-      a.requiere_revision === true ||
-      a.requiere_revision_humana === 'SI' ||
-      (a.categoria_principal || a.categoria) === 'REVISIÓN HUMANA';
-    if (needsReview) {
+    if (recordRequiresHumanReview(rec)) {
       totalRequiereRevisionHumana++;
     }
   });

@@ -112,8 +112,11 @@ async function runOtrasSecondValidationTests(): Promise<void> {
       res1.analyses.every(a => a.origen_clasificacion === 'CLASIFICACION_INICIAL')
     );
     check(
-      'Escenario 1d: Consumo de tokens registrado correctamente desde usageMetadata',
-      res1.telemetry.tokens.disponible === true && res1.telemetry.tokens.total_tokens === 640
+      'Escenario 1d: Consumo de tokens registrado correctamente desde usageMetadata (sin llamadas Gemini para Tipo de caso)',
+      res1.telemetry.tokens.disponible === true &&
+        res1.telemetry.tokens.total_tokens === 490 &&
+        res1.telemetry.llamadas_tipo_caso === 0 &&
+        !calls.includes('TIPO_CASO')
     );
   }
 
@@ -385,10 +388,11 @@ async function runOtrasSecondValidationTests(): Promise<void> {
         metrics.porcentajeFinalOtras === 40 &&
         metrics.totalRequiereRevisionHumana === 2 &&
         metrics.motivosFrecuentesOtras.length === 2 &&
-        metrics.llamadasGemini.total === 3 &&
+        metrics.llamadasGemini.total === 2 &&
+        metrics.llamadasGemini.tipoCaso === 0 &&
         metrics.llamadasGemini.segundaValidacionOtras === 1 &&
         metrics.consumoTokens.disponible === true &&
-        metrics.consumoTokens.totalTokens === 1900
+        metrics.consumoTokens.totalTokens === 1780
     );
 
     // Verify Excel export keeps exact canonical columns, preserves all records, no duplicate columns, no internal traceability columns

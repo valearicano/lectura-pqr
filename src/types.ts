@@ -94,8 +94,6 @@ export type CategoriaPQR16 = typeof CATEGORIAS_OPERATIVAS[number] | typeof CATEG
 
 export type TipoPQR = 'PETICIÓN' | 'QUEJA' | 'RECLAMO' | 'SOLICITUD';
 
-export type SentimientoPQR = 'positivo' | 'negativo' | 'neutro';
-
 export type TipoCasoSFC = 'Solicitud' | 'Reclamo';
 
 export type OrigenClasificacion =
@@ -154,7 +152,6 @@ export interface PQRSAnalysis {
   categoria_principal?: string;
   subcategoria: string;
   tipo_caso?: TipoCasoSFC;
-  sentimiento?: SentimientoPQR;
   resumen_requerimiento?: string;
   intencion_cliente?: string;
   confianza: number; // 0 to 100
